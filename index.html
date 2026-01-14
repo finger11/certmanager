@@ -3,306 +3,222 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>인증서관리시스템 (GitHub MVP)</title>
+  <title>인증서관리시스템</title>
   <link rel="stylesheet" href="./styles.css" />
-
-  <!-- SheetJS: Excel 읽기 (CDN) -->
+  <!-- Excel 업로드: SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
-
 <body>
-  <header class="header">
-    <div class="header__left">
-      <div class="header__title">인증서관리시스템</div>
-      <div class="header__sub">GitHub Pages MVP (LocalStorage 기반)</div>
-    </div>
-    <div class="header__right">
-      <button class="btn" id="btnExportJson">데이터 Export(JSON)</button>
+  <header class="topbar">
+    <div class="topbar__title">인증서관리시스템 (인증서조회 Master)</div>
+    <div class="topbar__actions">
+      <button class="btn" id="btnExport">Export(JSON)</button>
       <button class="btn btn--danger" id="btnReset">초기화</button>
     </div>
   </header>
 
-  <main class="layout">
-    <aside class="sidebar">
-      <nav class="nav">
-        <button class="nav__item is-active" data-tab="tab-models">1) 모델 업로드</button>
-        <button class="nav__item" data-tab="tab-doctypes">2) 문서종류(DocType)</button>
-        <button class="nav__item" data-tab="tab-matrix">3) 모델 요구 매트릭스</button>
-        <button class="nav__item" data-tab="tab-documents">4) 문서 등록</button>
-        <button class="nav__item" data-tab="tab-search">5) 검색</button>
-        <button class="nav__item" data-tab="tab-expiry">6) 만료/알림</button>
-      </nav>
-
-      <div class="card">
-        <div class="card__title">저장 방식</div>
-        <div class="card__body small">
-          본 MVP는 브라우저 LocalStorage에 저장된다. <br/>
-          실제 운영(메일 자동발송/권한/공유)은 백엔드가 필요하다.
+  <main class="wrap">
+    <section class="card">
+      <div class="card__head">
+        <div class="card__title">인증서 조회 Master</div>
+        <div class="card__actions">
+          <button class="btn" id="btnOpenModelMaster">모델 편성하기</button>
+          <button class="btn btn--primary" id="btnOpenRegMaster">인증서 등록하기</button>
         </div>
       </div>
-    </aside>
 
-    <section class="content">
-      <!-- TAB 1: 모델 업로드 -->
-      <section class="tab is-active" id="tab-models">
-        <h2>1) 모델 Master 업로드</h2>
-
-        <div class="grid2">
-          <div class="card">
-            <div class="card__title">엑셀 업로드</div>
-            <div class="card__body">
-              <div class="hint">
-                엑셀 첫 시트에서 컬럼명을 아래 중 하나로 인식한다.<br/>
-                <b>제품코드</b>(product_code), <b>모델명</b>(model_name), <b>가스구분</b>(gas_type)
-              </div>
-
-              <input type="file" id="modelFile" accept=".xlsx,.xls" />
-              <div class="row">
-                <button class="btn btn--primary" id="btnImportModels">업로드 적용</button>
-                <button class="btn" id="btnDownloadTemplate">엑셀 템플릿 다운로드</button>
-              </div>
-              <div class="small muted" id="modelImportResult"></div>
-            </div>
+      <!-- 검색 영역 -->
+      <div class="card__body">
+        <div class="filters">
+          <div class="field">
+            <label>모델명</label>
+            <input class="input" id="fModelName" placeholder="예: RC620" />
+          </div>
+          <div class="field">
+            <label>발급기관</label>
+            <input class="input" id="fIssuer" placeholder="예: 한국환경산업기술원" />
+          </div>
+          <div class="field">
+            <label>종류</label>
+            <input class="input" id="fType" placeholder="예: 환경표지 인증서" />
+          </div>
+          <div class="field">
+            <label>가스구분</label>
+            <input class="input" id="fGas" placeholder="예: LNG" />
           </div>
 
-          <div class="card">
-            <div class="card__title">현재 모델 목록</div>
-            <div class="card__body">
-              <div class="row">
-                <input class="input" id="modelFilter" placeholder="모델/제품코드 검색" />
-                <button class="btn" id="btnAddModel">수기 추가</button>
-              </div>
-              <div class="tableWrap">
-                <table class="table" id="modelTable"></table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 2: DocType -->
-      <section class="tab" id="tab-doctypes">
-        <h2>2) 문서종류(DocType) 관리</h2>
-
-        <div class="grid2">
-          <div class="card">
-            <div class="card__title">DocType 추가</div>
-            <div class="card__body">
-              <label class="label">구분</label>
-              <select class="input" id="dtCategory">
-                <option value="CERT">인증서(CERT)</option>
-                <option value="TEST_REPORT">시험성적서(TEST_REPORT)</option>
-              </select>
-
-              <label class="label">문서종류명</label>
-              <input class="input" id="dtName" placeholder="예: ISO 9001, KS B 8114" />
-
-              <label class="label">발급기관(선택)</label>
-              <input class="input" id="dtOrg" placeholder="예: 한국표준협회" />
-
-              <label class="label">기본 갱신주기(개월, 선택)</label>
-              <input class="input" id="dtRenew" type="number" min="0" placeholder="예: 36" />
-
-              <div class="row">
-                <button class="btn btn--primary" id="btnAddDocType">추가</button>
-              </div>
-              <div class="small muted">※ 실제 문서 등록 시 갱신주기를 개별 문서에서 override 가능</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">DocType 목록</div>
-            <div class="card__body">
-              <div class="row">
-                <input class="input" id="dtFilter" placeholder="DocType 검색" />
-              </div>
-              <div class="tableWrap">
-                <table class="table" id="dtTable"></table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 3: 매트릭스 -->
-      <section class="tab" id="tab-matrix">
-        <h2>3) 모델 요구 매트릭스</h2>
-
-        <div class="card">
-          <div class="card__body">
+          <div class="field span2">
+            <label>유효기간</label>
             <div class="row">
-              <input class="input" id="mxModelFilter" placeholder="모델/제품코드 검색" />
-              <select class="input" id="mxDocTypeFilter">
-                <option value="">모든 DocType</option>
-              </select>
-              <button class="btn" id="btnMatrixBulkFill">선택 모델에 DocType 일괄(TBD)</button>
-            </div>
-
-            <div class="hint">
-              상태값: REQUIRED(필수) / NOT_REQUIRED(불필요) / NOT_POSSIBLE(취득불가) / TBD(미정)
-            </div>
-
-            <div class="tableWrap">
-              <table class="table" id="matrixTable"></table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 4: 문서 등록 -->
-      <section class="tab" id="tab-documents">
-        <h2>4) 문서 등록</h2>
-
-        <div class="grid2">
-          <div class="card">
-            <div class="card__title">새 문서 등록</div>
-            <div class="card__body">
-              <label class="label">DocType</label>
-              <select class="input" id="docTypeSelect"></select>
-
-              <label class="label">문서명(표시용)</label>
-              <input class="input" id="docTitle" placeholder="예: KS B 8114 가스 레인지 (2공장)" />
-
-              <label class="label">발급기관(선택)</label>
-              <input class="input" id="docIssuer" placeholder="예: 한국표준협회" />
-
-              <div class="grid3">
-                <div>
-                  <label class="label">발급일</label>
-                  <input class="input" id="docIssued" type="date" />
-                </div>
-                <div>
-                  <label class="label">만료일</label>
-                  <input class="input" id="docExpiry" type="date" />
-                </div>
-                <div>
-                  <label class="label">갱신주기(개월)</label>
-                  <input class="input" id="docRenew" type="number" min="0" placeholder="선택" />
-                </div>
-              </div>
-
-              <label class="label">적용범위</label>
-              <select class="input" id="docScope">
-                <option value="COMPANY">전사</option>
-                <option value="PLANT">공장</option>
-                <option value="MODEL">모델(품목)</option>
-              </select>
-
-              <div id="plantBox" class="hidden">
-                <label class="label">공장(텍스트로 입력)</label>
-                <input class="input" id="docPlant" placeholder="예: 2공장" />
-              </div>
-
-              <label class="label">적용 모델 선택(다중)</label>
-              <div class="pick">
-                <input class="input" id="docModelSearch" placeholder="모델 검색 후 추가" />
-                <div class="pick__list" id="docModelPickList"></div>
-                <div class="pick__chips" id="docModelChips"></div>
-              </div>
-
-              <label class="label">파일 첨부(선택)</label>
-              <input type="file" id="docFile" />
-
-              <label class="label">메모(선택)</label>
-              <textarea class="input" id="docMemo" rows="3"></textarea>
-
-              <div class="row">
-                <button class="btn btn--primary" id="btnAddDocument">등록</button>
-              </div>
-              <div class="small muted">※ 파일은 브라우저 저장(Export 시 base64 포함). 운영 시에는 저장소(S3 등)로 대체 권장</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">등록된 문서</div>
-            <div class="card__body">
-              <div class="row">
-                <input class="input" id="docFilter" placeholder="문서명/기관/DocType 검색" />
-              </div>
-              <div class="tableWrap">
-                <table class="table" id="docTable"></table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 5: 검색 -->
-      <section class="tab" id="tab-search">
-        <h2>5) 검색</h2>
-        <div class="card">
-          <div class="card__body">
-            <div class="grid3">
-              <input class="input" id="qKeyword" placeholder="키워드(문서/기관/DocType)" />
-              <input class="input" id="qModel" placeholder="모델/제품코드" />
-              <select class="input" id="qStatus">
-                <option value="">상태 전체</option>
-                <option value="VALID">유효</option>
-                <option value="DUE">만료임박</option>
-                <option value="EXPIRED">만료</option>
-              </select>
-            </div>
-            <div class="row">
+              <input class="input" id="fValidFrom" type="date" />
+              <span class="muted">~</span>
+              <input class="input" id="fValidTo" type="date" />
               <button class="btn btn--primary" id="btnSearch">검색</button>
             </div>
-
-            <div class="tableWrap">
-              <table class="table" id="searchTable"></table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 6: 만료/알림 -->
-      <section class="tab" id="tab-expiry">
-        <h2>6) 만료/알림(정적 MVP)</h2>
-
-        <div class="grid2">
-          <div class="card">
-            <div class="card__title">만료 임박 기준</div>
-            <div class="card__body">
-              <label class="label">임박 기준(일)</label>
-              <input class="input" id="dueDays" type="number" min="0" />
-              <div class="row">
-                <button class="btn btn--primary" id="btnRecalcDue">재계산</button>
-              </div>
-              <div class="hint">
-                백엔드 없이도 “임박 목록”은 가능하다. <br/>
-                자동 메일 발송은 불가하므로, 아래에서 대상 리스트를 생성한다.
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">메일 대상 생성(수동)</div>
-            <div class="card__body">
-              <label class="label">수신자(쉼표로 구분)</label>
-              <input class="input" id="manualEmails" placeholder="예: a@company.com,b@company.com" />
-              <div class="row">
-                <button class="btn" id="btnBuildMailto">mailto 생성</button>
-                <button class="btn" id="btnCopySummary">요약 복사</button>
-              </div>
-              <div class="small muted" id="mailtoOut"></div>
-            </div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="card__title">만료/임박 목록</div>
-          <div class="card__body">
-            <div class="tableWrap">
-              <table class="table" id="expiryTable"></table>
-            </div>
-          </div>
+        <!-- 목록 -->
+        <div class="tableWrap">
+          <table class="table" id="certTable"></table>
         </div>
-      </section>
-
+      </div>
     </section>
   </main>
 
-  <footer class="footer small muted">
-    GitHub Pages MVP — 저장: LocalStorage / Excel 업로드: SheetJS / 메일 자동발송: 백엔드 필요
-  </footer>
+  <!-- ======= 모달: 모델 Master ======= -->
+  <div class="modalBack" id="modalModelMaster">
+    <div class="modal">
+      <div class="modal__head">
+        <div class="modal__title">모델 Master</div>
+        <button class="iconBtn" data-close="modalModelMaster">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="hint">
+          엑셀 컬럼: <b>제품코드</b>, <b>모델명</b>, <b>가스구분</b> (또는 product_code/model_name/gas_type)
+        </div>
+
+        <div class="row">
+          <input type="file" id="modelFile" accept=".xlsx,.xls" />
+          <button class="btn btn--primary" id="btnImportModels">업로드</button>
+          <button class="btn" id="btnDownloadModelTemplate">템플릿</button>
+        </div>
+        <div class="small muted" id="modelImportResult"></div>
+
+        <hr class="hr" />
+
+        <div class="row">
+          <input class="input" id="modelFilter" placeholder="모델/제품코드 검색" />
+          <button class="btn" id="btnAddModelManual">수기 추가</button>
+        </div>
+
+        <div class="tableWrap">
+          <table class="table" id="modelTable"></table>
+        </div>
+      </div>
+
+      <div class="modal__foot">
+        <button class="btn" data-close="modalModelMaster">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 모달: 등록 Master ======= -->
+  <div class="modalBack" id="modalRegMaster">
+    <div class="modal modal--wide">
+      <div class="modal__head">
+        <div class="modal__title">등록 Master</div>
+        <button class="iconBtn" data-close="modalRegMaster">✕</button>
+      </div>
+
+      <div class="modal__body">
+        <div class="grid2">
+          <div>
+            <label class="label">적용대상</label>
+            <input class="input" id="regScope" value="다수" readonly />
+          </div>
+          <div class="row align-end">
+            <button class="btn" id="btnOpenTargetPicker">검색</button>
+            <div class="small muted" id="pickedCount">선택 0건</div>
+          </div>
+        </div>
+
+        <label class="label">성적서(인증서)번호</label>
+        <input class="input" id="regCertNo" placeholder="예: 26830" />
+
+        <label class="label">종류</label>
+        <input class="input" id="regType" placeholder="예: 환경표지 인증서" />
+
+        <label class="label">발급기관</label>
+        <input class="input" id="regIssuer" placeholder="예: 한국환경산업기술원" />
+
+        <div class="grid3">
+          <div>
+            <label class="label">발급일자</label>
+            <input class="input" id="regIssued" type="date" />
+          </div>
+          <div>
+            <label class="label">유효기간(From)</label>
+            <input class="input" id="regValidFrom" type="date" />
+          </div>
+          <div>
+            <label class="label">유효기간(To)</label>
+            <input class="input" id="regValidTo" type="date" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label class="check">
+            <input type="checkbox" id="regNoExpiry" />
+            유효기간 없음
+          </label>
+        </div>
+
+        <label class="label">파일업로드(PDF 등)</label>
+        <div class="row">
+          <input class="input" id="regFilePath" placeholder="C:/document/..." readonly />
+          <input type="file" id="regFile" />
+        </div>
+
+        <label class="label">메모(선택)</label>
+        <textarea class="input" id="regMemo" rows="3"></textarea>
+      </div>
+
+      <div class="modal__foot">
+        <button class="btn btn--primary" id="btnSaveCert">적용</button>
+        <button class="btn" data-close="modalRegMaster">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 팝업: 적용대상 지정하기 ======= -->
+  <div class="modalBack" id="modalTargetPicker">
+    <div class="modal modal--wide">
+      <div class="modal__head">
+        <div class="modal__title">적용대상 지정하기</div>
+        <button class="iconBtn" data-close="modalTargetPicker">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="row">
+          <label class="label" style="margin:0">모델명</label>
+          <input class="input" id="tpKeyword" placeholder="예: RC620" />
+          <button class="btn" id="btnTpSearch">검색</button>
+        </div>
+
+        <div class="tableWrap">
+          <table class="table" id="targetTable"></table>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="btnTpSelectAll">전체선택</button>
+          <button class="btn" id="btnTpClear">전체해제</button>
+        </div>
+      </div>
+
+      <div class="modal__foot">
+        <button class="btn btn--primary" id="btnTpApply">적용</button>
+        <button class="btn" data-close="modalTargetPicker">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 팝업: 적용대상 확인하기 ======= -->
+  <div class="modalBack" id="modalTargetView">
+    <div class="modal modal--wide">
+      <div class="modal__head">
+        <div class="modal__title">적용대상 조회</div>
+        <button class="iconBtn" data-close="modalTargetView">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="tableWrap">
+          <table class="table" id="targetViewTable"></table>
+        </div>
+      </div>
+      <div class="modal__foot">
+        <button class="btn" data-close="modalTargetView">닫기</button>
+      </div>
+    </div>
+  </div>
 
   <script src="./app.js"></script>
 </body>
