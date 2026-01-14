@@ -1,129 +1,61 @@
-/* =========================
-   Storage / Utilities
-========================= */
-const LS_KEY = "CERT_MVP_V1";
+const LS_KEY = "CERT_SYS_V1";
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 function uid(prefix="id"){
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
-
-function todayISO(){
-  const d = new Date();
-  return d.toISOString().slice(0,10);
-}
-
+function todayISO(){ return new Date().toISOString().slice(0,10); }
 function daysBetween(aISO, bISO){
   if(!aISO || !bISO) return null;
-  const a = new Date(aISO);
-  const b = new Date(bISO);
+  const a = new Date(aISO), b = new Date(bISO);
   return Math.floor((b - a) / (1000*60*60*24));
 }
-
-function clampStr(s, n=40){
-  if(!s) return "";
-  return s.length > n ? s.slice(0,n-1) + "…" : s;
-}
-
-function saveState(state){
-  localStorage.setItem(LS_KEY, JSON.stringify(state));
-}
+function saveState(s){ localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 function loadState(){
   const raw = localStorage.getItem(LS_KEY);
   if(raw){
-    try { return JSON.parse(raw); } catch(e){}
+    try{ return JSON.parse(raw); } catch {}
   }
-  // default seed
   return {
-    settings: { dueDays: 60 },
-    models: [],            // {model_id, product_code, model_name, gas_type}
-    doctypes: [],          // {doctype_id, category, name, org, defaultRenewMonths}
-    requirements: {},      // key: `${model_id}__${doctype_id}` => {status, reason, updatedAt}
-    documents: [],         // {document_id, doctype_id, title, issuer, issued, expiry, renewMonths, scope, plant, memo, file:{name,dataUrl}?}
-    documentModelMap: []   // {document_id, model_id}
+    models: [],        // {model_id, product_code, model_name, gas_type}
+    certs: [],         // {cert_id, cert_no, type, issuer, issued, valid_from, valid_to, memo, file:{name,dataUrl}? , created_at}
+    certModelMap: []   // {cert_id, model_id}  (N:1 / N:M 모두 커버)
   };
 }
-
 let state = loadState();
 
-/* =========================
-   DOM Helpers
-========================= */
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-
-function renderTable(el, cols, rows){
-  const thead = `<thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join("")}</tr></thead>`;
-  const tbody = `<tbody>${rows.map(r=>{
-    return `<tr>${cols.map(c=>`<td>${c.render(r)}</td>`).join("")}</tr>`;
-  }).join("")}</tbody>`;
-  el.innerHTML = thead + tbody;
-}
-
-function downloadBlob(filename, blob){
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 500);
-}
-
-function badgeForStatus(s){
-  if(s==="VALID") return `<span class="badge b-valid">유효</span>`;
-  if(s==="DUE") return `<span class="badge b-due">임박</span>`;
-  if(s==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
-  return "";
-}
-
-function docStatus(doc){
-  if(!doc.expiry) return "VALID";
-  const dueDays = state.settings.dueDays ?? 60;
-  const d = daysBetween(todayISO(), doc.expiry);
-  if(d < 0) return "EXPIRED";
-  if(d <= dueDays) return "DUE";
-  return "VALID";
-}
-
-/* =========================
-   Tabs
-========================= */
-function initTabs(){
-  $$(".nav__item").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      $$(".nav__item").forEach(b=>b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      const tabId = btn.dataset.tab;
-      $$(".tab").forEach(t=>t.classList.remove("is-active"));
-      $("#"+tabId).classList.add("is-active");
-      // refresh on enter
-      refreshAll();
+// ===== modal helpers
+function openModal(id){ $("#"+id).classList.add("is-open"); }
+function closeModal(id){ $("#"+id).classList.remove("is-open"); }
+function bindModalClose(){
+  $$("[data-close]").forEach(b=>{
+    b.addEventListener("click", ()=> closeModal(b.dataset.close));
+  });
+  // backdrop click close
+  $$(".modalBack").forEach(back=>{
+    back.addEventListener("click",(e)=>{
+      if(e.target === back) back.classList.remove("is-open");
     });
   });
 }
 
-/* =========================
-   Models: Import / CRUD
-========================= */
+// ===== Excel import (models)
 function normalizeHeader(h){
-  if(!h) return "";
-  const s = String(h).trim().toLowerCase();
-  // map korean & english variants
+  const s = String(h||"").trim().toLowerCase();
   if(["제품코드","product_code","productcode","코드"].includes(s)) return "product_code";
   if(["모델명","model_name","modelname","모델"].includes(s)) return "model_name";
   if(["가스구분","gas_type","gastype","가스"].includes(s)) return "gas_type";
   return s;
 }
-
 async function importModelsFromExcel(file){
-  if(!file) throw new Error("파일이 없다.");
-
+  if(!file) throw new Error("엑셀 파일이 없다.");
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
+  const wb = XLSX.read(buf, { type:"array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const json = XLSX.utils.sheet_to_json(ws, { defval: "" }); // first row as headers
+  const json = XLSX.utils.sheet_to_json(ws, { defval:"" });
 
-  // header normalize
   const mapped = json.map(row=>{
     const out = {};
     Object.keys(row).forEach(k=>{
@@ -134,40 +66,110 @@ async function importModelsFromExcel(file){
 
   let inserted=0, updated=0, skipped=0;
   mapped.forEach(r=>{
-    const product_code = String(r.product_code || "").trim();
-    const model_name = String(r.model_name || "").trim();
-    const gas_type = String(r.gas_type || "").trim();
-    if(!product_code || !model_name){
-      skipped++;
-      return;
-    }
-    const idx = state.models.findIndex(m=>m.product_code === product_code);
-    if(idx >= 0){
+    const product_code = String(r.product_code||"").trim();
+    const model_name = String(r.model_name||"").trim();
+    const gas_type = String(r.gas_type||"").trim();
+    if(!product_code || !model_name){ skipped++; return; }
+
+    const idx = state.models.findIndex(m=>m.product_code===product_code);
+    if(idx>=0){
       state.models[idx] = { ...state.models[idx], model_name, gas_type };
       updated++;
     }else{
-      state.models.push({
-        model_id: uid("m"),
-        product_code,
-        model_name,
-        gas_type
-      });
+      state.models.push({ model_id: uid("m"), product_code, model_name, gas_type });
       inserted++;
     }
   });
 
   saveState(state);
-  return {inserted, updated, skipped, total: mapped.length};
+  return { total:mapped.length, inserted, updated, skipped };
 }
 
+// template
+function downloadModelTemplate(){
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["제품코드","모델명","가스구분"],
+    ["158060002","RC620-22KF","LNG"],
+    ["158070002","RC620-27KF","LNG"]
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "models");
+  const out = XLSX.write(wb, { bookType:"xlsx", type:"array" });
+  const blob = new Blob([out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "model_master_template.xlsx";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 500);
+}
+
+// ===== basic render helpers
+function badgeForStatus(st){
+  if(st==="VALID") return `<span class="badge b-valid">유효</span>`;
+  if(st==="DUE") return `<span class="badge b-due">임박</span>`;
+  if(st==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
+  return "";
+}
+function calcStatus(cert){
+  if(!cert.valid_to) return "VALID";
+  const d = daysBetween(todayISO(), cert.valid_to);
+  if(d < 0) return "EXPIRED";
+  if(d <= 60) return "DUE";
+  return "VALID";
+}
+function getModelsByCert(cert_id){
+  const mids = state.certModelMap.filter(x=>x.cert_id===cert_id).map(x=>x.model_id);
+  return mids.map(mid=>state.models.find(m=>m.model_id===mid)).filter(Boolean);
+}
+
+// ===== render Model Master table
+function renderModels(){
+  const kw = ($("#modelFilter").value||"").trim().toLowerCase();
+  const rows = state.models
+    .filter(m=>{
+      if(!kw) return true;
+      return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(kw);
+    })
+    .sort((a,b)=>a.product_code.localeCompare(b.product_code));
+
+  const el = $("#modelTable");
+  el.innerHTML = `
+    <thead><tr>
+      <th>제품코드</th><th>모델명</th><th>가스구분</th><th></th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(m=>`
+        <tr>
+          <td><b>${m.product_code}</b></td>
+          <td>${m.model_name}</td>
+          <td>${m.gas_type||"-"}</td>
+          <td><button class="btn" data-del-model="${m.model_id}">삭제</button></td>
+        </tr>
+      `).join("")}
+    </tbody>
+  `;
+  el.querySelectorAll("[data-del-model]").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const id = b.dataset.delModel;
+      if(!confirm("모델을 삭제하나? (연결된 적용대상 매핑도 삭제됨)")) return;
+      state.models = state.models.filter(m=>m.model_id!==id);
+      state.certModelMap = state.certModelMap.filter(x=>x.model_id!==id);
+      saveState(state);
+      renderModels();
+      renderCertList();
+      renderTargetPicker(); // 선택창도 갱신
+    });
+  });
+}
+
+// manual add
 function addModelManual(){
   const product_code = prompt("제품코드 입력");
   if(!product_code) return;
   const model_name = prompt("모델명 입력");
   if(!model_name) return;
-  const gas_type = prompt("가스구분 입력(선택)");
-  const exists = state.models.some(m=>m.product_code===product_code.trim());
-  if(exists){
+  const gas_type = prompt("가스구분(선택)");
+  if(state.models.some(m=>m.product_code===product_code.trim())){
     alert("이미 존재하는 제품코드이다.");
     return;
   }
@@ -178,158 +180,67 @@ function addModelManual(){
     gas_type: (gas_type||"").trim()
   });
   saveState(state);
-  refreshAll();
+  renderModels();
+  renderTargetPicker();
 }
 
-function deleteModel(model_id){
-  if(!confirm("이 모델을 삭제하나? (연결된 매트릭스/매핑도 함께 정리 권장)")) return;
-  state.models = state.models.filter(m=>m.model_id!==model_id);
-  // remove requirements for this model
-  Object.keys(state.requirements).forEach(k=>{
-    if(k.startsWith(model_id+"__")) delete state.requirements[k];
-  });
-  // remove doc mappings
-  state.documentModelMap = state.documentModelMap.filter(x=>x.model_id!==model_id);
-  saveState(state);
-  refreshAll();
-}
-
-/* =========================
-   DocTypes CRUD
-========================= */
-function addDocType(){
-  const category = $("#dtCategory").value;
-  const name = $("#dtName").value.trim();
-  const org = $("#dtOrg").value.trim();
-  const renew = $("#dtRenew").value ? Number($("#dtRenew").value) : null;
-  if(!name){
-    alert("문서종류명을 입력해야 한다.");
-    return;
-  }
-  const dup = state.doctypes.some(d=>d.name.toLowerCase()===name.toLowerCase() && d.category===category);
-  if(dup){
-    alert("동일한 DocType이 이미 존재한다.");
-    return;
-  }
-  state.doctypes.push({
-    doctype_id: uid("dt"),
-    category,
-    name,
-    org,
-    defaultRenewMonths: renew
-  });
-  $("#dtName").value="";
-  $("#dtOrg").value="";
-  $("#dtRenew").value="";
-  saveState(state);
-  refreshAll();
-}
-
-function deleteDocType(doctype_id){
-  if(!confirm("DocType을 삭제하나? 연결된 매트릭스/문서에도 영향이 있다.")) return;
-  state.doctypes = state.doctypes.filter(d=>d.doctype_id!==doctype_id);
-  // requirements cleanup
-  Object.keys(state.requirements).forEach(k=>{
-    const [, dt] = k.split("__");
-    if(dt===doctype_id) delete state.requirements[k];
-  });
-  // documents cleanup (or keep but broken) -> remove related docs
-  const docIds = state.documents.filter(d=>d.doctype_id===doctype_id).map(d=>d.document_id);
-  state.documents = state.documents.filter(d=>d.doctype_id!==doctype_id);
-  state.documentModelMap = state.documentModelMap.filter(x=>!docIds.includes(x.document_id));
-  saveState(state);
-  refreshAll();
-}
-
-/* =========================
-   Requirements Matrix
-========================= */
-const REQ_STATUSES = ["REQUIRED","NOT_REQUIRED","NOT_POSSIBLE","TBD"];
-
-function setRequirement(model_id, doctype_id, status){
-  const key = `${model_id}__${doctype_id}`;
-  state.requirements[key] = {
-    status,
-    updatedAt: new Date().toISOString()
-  };
-  saveState(state);
-}
-
-function bulkFillTBDForFilteredModels(){
-  const keyword = ($("#mxModelFilter").value||"").trim().toLowerCase();
-  const dtId = $("#mxDocTypeFilter").value;
-  const models = state.models.filter(m=>{
-    if(!keyword) return true;
-    return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(keyword);
-  });
-  if(models.length===0){ alert("대상 모델이 없다."); return; }
-  if(!dtId){ alert("DocType을 선택해야 한다."); return; }
-
-  models.forEach(m=>{
-    const k = `${m.model_id}__${dtId}`;
-    if(!state.requirements[k]){
-      state.requirements[k] = { status:"TBD", updatedAt:new Date().toISOString() };
-    }
-  });
-  saveState(state);
-  refreshAll();
-}
-
-/* =========================
-   Documents / Mapping / File
-========================= */
+// ===== Cert registration state (picked targets)
 let pickedModelIds = new Set();
-
-function updateScopeUI(){
-  const scope = $("#docScope").value;
-  $("#plantBox").classList.toggle("hidden", scope !== "PLANT");
+function updatePickedCount(){
+  $("#pickedCount").textContent = `선택 ${pickedModelIds.size}건`;
 }
 
-function renderModelPicker(){
-  const keyword = ($("#docModelSearch").value||"").trim().toLowerCase();
-  const list = $("#docModelPickList");
-  const chips = $("#docModelChips");
-
-  const filtered = state.models
+// ===== target picker render
+function renderTargetPicker(){
+  const kw = ($("#tpKeyword").value||"").trim().toLowerCase();
+  const rows = state.models
     .filter(m=>{
-      if(!keyword) return true;
-      return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(keyword);
+      if(!kw) return true;
+      return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(kw);
     })
-    .slice(0, 50);
+    .sort((a,b)=>a.product_code.localeCompare(b.product_code));
 
-  list.innerHTML = filtered.map(m=>{
-    const picked = pickedModelIds.has(m.model_id);
-    return `<div class="pick__item" data-mid="${m.model_id}">
-      ${picked ? "✅ " : ""}<b>${m.product_code}</b> — ${clampStr(m.model_name, 30)} <span class="muted">(${m.gas_type||"-"})</span>
-    </div>`;
-  }).join("");
+  const el = $("#targetTable");
+  el.innerHTML = `
+    <thead><tr>
+      <th>제품코드</th><th>모델명</th><th>가스구분</th><th>적용구분</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(m=>{
+        const checked = pickedModelIds.has(m.model_id) ? "checked" : "";
+        return `
+          <tr>
+            <td><b>${m.product_code}</b></td>
+            <td>${m.model_name}</td>
+            <td>${m.gas_type||"-"}</td>
+            <td style="text-align:center">
+              <input type="checkbox" data-pick-mid="${m.model_id}" ${checked}/>
+            </td>
+          </tr>
+        `;
+      }).join("")}
+    </tbody>
+  `;
 
-  list.querySelectorAll(".pick__item").forEach(el=>{
-    el.addEventListener("click", ()=>{
-      const mid = el.dataset.mid;
-      if(pickedModelIds.has(mid)) pickedModelIds.delete(mid);
-      else pickedModelIds.add(mid);
-      renderModelPicker();
-    });
-  });
-
-  const picked = state.models.filter(m=>pickedModelIds.has(m.model_id));
-  chips.innerHTML = picked.map(m=>`
-    <span class="chip">
-      ${m.product_code}
-      <button data-mid="${m.model_id}">×</button>
-    </span>
-  `).join("");
-  chips.querySelectorAll("button").forEach(b=>{
-    b.addEventListener("click", ()=>{
-      pickedModelIds.delete(b.dataset.mid);
-      renderModelPicker();
+  el.querySelectorAll("[data-pick-mid]").forEach(chk=>{
+    chk.addEventListener("change", ()=>{
+      const mid = chk.dataset.pickMid;
+      if(chk.checked) pickedModelIds.add(mid);
+      else pickedModelIds.delete(mid);
+      updatePickedCount();
     });
   });
 }
 
+// apply picked targets
+function applyPickedTargets(){
+  updatePickedCount();
+  closeModal("modalTargetPicker");
+}
+
+// ===== file to dataURL
 function readFileAsDataUrl(file){
-  return new Promise((resolve, reject)=>{
+  return new Promise((resolve,reject)=>{
     if(!file) return resolve(null);
     const reader = new FileReader();
     reader.onload = ()=> resolve(String(reader.result));
@@ -338,480 +249,307 @@ function readFileAsDataUrl(file){
   });
 }
 
-async function addDocument(){
-  const doctype_id = $("#docTypeSelect").value;
-  const title = $("#docTitle").value.trim();
-  const issuer = $("#docIssuer").value.trim();
-  const issued = $("#docIssued").value || null;
-  const expiry = $("#docExpiry").value || null;
-  const renewMonths = $("#docRenew").value ? Number($("#docRenew").value) : null;
-  const scope = $("#docScope").value;
-  const plant = ($("#docPlant").value||"").trim() || null;
-  const memo = ($("#docMemo").value||"").trim() || null;
-
-  if(!doctype_id){ alert("DocType을 선택해야 한다."); return; }
-  if(!title){ alert("문서명을 입력해야 한다."); return; }
-  if(scope==="PLANT" && !plant){ alert("공장 범위면 공장 값을 입력해야 한다."); return; }
-  if(scope==="MODEL" && pickedModelIds.size===0){
-    alert("모델(품목) 범위면 적용 모델을 1개 이상 선택해야 한다.");
+// ===== register cert
+async function saveCert(){
+  if(pickedModelIds.size===0){
+    alert("적용대상을 1개 이상 선택해야 한다.");
     return;
   }
 
-  const file = $("#docFile").files?.[0] || null;
-  const dataUrl = await readFileAsDataUrl(file);
+  const cert_no = $("#regCertNo").value.trim();
+  const type = $("#regType").value.trim();
+  const issuer = $("#regIssuer").value.trim();
+  const issued = $("#regIssued").value || null;
+  const valid_from = $("#regValidFrom").value || null;
 
-  const document_id = uid("doc");
-  state.documents.push({
-    document_id,
-    doctype_id,
-    title,
-    issuer,
-    issued,
-    expiry,
-    renewMonths,
-    scope,
-    plant,
-    memo,
-    file: file ? { name: file.name, dataUrl } : null,
-    createdAt: new Date().toISOString()
-  });
+  const noExpiry = $("#regNoExpiry").checked;
+  const valid_to = noExpiry ? null : ($("#regValidTo").value || null);
 
-  // mapping
-  if(pickedModelIds.size>0){
-    pickedModelIds.forEach(mid=>{
-      state.documentModelMap.push({ document_id, model_id: mid });
-    });
+  if(!cert_no || !type || !issuer){
+    alert("성적서(인증서)번호 / 종류 / 발급기관은 필수이다.");
+    return;
+  }
+  if(!noExpiry && (!valid_from || !valid_to)){
+    alert("유효기간 없음이 아니라면 From/To를 입력해야 한다.");
+    return;
   }
 
+  const file = $("#regFile").files?.[0] || null;
+  const dataUrl = await readFileAsDataUrl(file);
+
+  const cert_id = uid("c");
+  state.certs.push({
+    cert_id,
+    cert_no,
+    type,
+    issuer,
+    issued,
+    valid_from,
+    valid_to,
+    memo: ($("#regMemo").value||"").trim() || null,
+    file: file ? { name:file.name, dataUrl } : null,
+    created_at: new Date().toISOString()
+  });
+
+  pickedModelIds.forEach(mid=>{
+    state.certModelMap.push({ cert_id, model_id: mid });
+  });
+
   saveState(state);
 
-  // reset form
-  $("#docTitle").value="";
-  $("#docIssuer").value="";
-  $("#docIssued").value="";
-  $("#docExpiry").value="";
-  $("#docRenew").value="";
-  $("#docMemo").value="";
-  $("#docPlant").value="";
-  $("#docFile").value="";
+  // reset registration form
+  $("#regCertNo").value="";
+  $("#regType").value="";
+  $("#regIssuer").value="";
+  $("#regIssued").value="";
+  $("#regValidFrom").value="";
+  $("#regValidTo").value="";
+  $("#regNoExpiry").checked=false;
+  $("#regFile").value="";
+  $("#regFilePath").value="";
+  $("#regMemo").value="";
   pickedModelIds = new Set();
-  renderModelPicker();
-  refreshAll();
+  updatePickedCount();
+
+  closeModal("modalRegMaster");
+  renderCertList();
 }
 
-function deleteDocument(document_id){
-  if(!confirm("문서를 삭제하나?")) return;
-  state.documents = state.documents.filter(d=>d.document_id!==document_id);
-  state.documentModelMap = state.documentModelMap.filter(x=>x.document_id!==document_id);
-  saveState(state);
-  refreshAll();
-}
-
-function openDocumentFile(document_id){
-  const doc = state.documents.find(d=>d.document_id===document_id);
-  if(!doc || !doc.file || !doc.file.dataUrl){
-    alert("첨부 파일이 없다.");
+// ===== file download
+function downloadFile(cert_id){
+  const cert = state.certs.find(c=>c.cert_id===cert_id);
+  if(!cert?.file?.dataUrl){
+    alert("첨부파일이 없다.");
     return;
   }
   const a = document.createElement("a");
-  a.href = doc.file.dataUrl;
-  a.download = doc.file.name || "document";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.href = cert.file.dataUrl;
+  a.download = cert.file.name || "file";
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
-/* =========================
-   Renderers
-========================= */
-function renderModels(){
-  const el = $("#modelTable");
-  const keyword = ($("#modelFilter").value||"").trim().toLowerCase();
-  const rows = state.models
-    .filter(m=>{
-      if(!keyword) return true;
-      return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(keyword);
-    })
-    .sort((a,b)=>a.product_code.localeCompare(b.product_code));
-
-  const cols = [
-    {label:"제품코드", render:r=>`<b>${r.product_code}</b>`},
-    {label:"모델명", render:r=>clampStr(r.model_name, 28)},
-    {label:"가스구분", render:r=>r.gas_type||"-"},
-    {label:"", render:r=>`<button class="btn" data-del="${r.model_id}">삭제</button>`}
-  ];
-  renderTable(el, cols, rows);
-  el.querySelectorAll("button[data-del]").forEach(b=>{
-    b.addEventListener("click", ()=>deleteModel(b.dataset.del));
-  });
+// ===== view targets popup
+function openTargetView(cert_id){
+  const models = getModelsByCert(cert_id);
+  const el = $("#targetViewTable");
+  el.innerHTML = `
+    <thead><tr>
+      <th>제품코드</th><th>모델명</th><th>가스구분</th>
+    </tr></thead>
+    <tbody>
+      ${models.map(m=>`
+        <tr>
+          <td><b>${m.product_code}</b></td>
+          <td>${m.model_name}</td>
+          <td>${m.gas_type||"-"}</td>
+        </tr>
+      `).join("")}
+    </tbody>
+  `;
+  openModal("modalTargetView");
 }
 
-function renderDocTypes(){
-  const el = $("#dtTable");
-  const keyword = ($("#dtFilter").value||"").trim().toLowerCase();
-  const rows = state.doctypes
-    .filter(d=>{
-      if(!keyword) return true;
-      return (d.name+" "+(d.org||"")+" "+d.category).toLowerCase().includes(keyword);
-    })
-    .sort((a,b)=>a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-  const cols = [
-    {label:"구분", render:r=>r.category},
-    {label:"DocType", render:r=>`<b>${r.name}</b>`},
-    {label:"기관", render:r=>r.org||"-"},
-    {label:"기본갱신(개월)", render:r=>r.defaultRenewMonths ?? "-"},
-    {label:"", render:r=>`<button class="btn" data-del="${r.doctype_id}">삭제</button>`},
-  ];
-  renderTable(el, cols, rows);
-  el.querySelectorAll("button[data-del]").forEach(b=>{
-    b.addEventListener("click", ()=>deleteDocType(b.dataset.del));
-  });
+// ===== search & list
+function renderCertList(){
+  const fModelName = ($("#fModelName").value||"").trim().toLowerCase();
+  const fIssuer = ($("#fIssuer").value||"").trim().toLowerCase();
+  const fType = ($("#fType").value||"").trim().toLowerCase();
+  const fGas = ($("#fGas").value||"").trim().toLowerCase();
+  const fFrom = $("#fValidFrom").value || null;
+  const fTo = $("#fValidTo").value || null;
 
-  // selects
-  const mxSel = $("#mxDocTypeFilter");
-  const docSel = $("#docTypeSelect");
-
-  const opts = state.doctypes.map(d=>`<option value="${d.doctype_id}">[${d.category}] ${d.name}</option>`).join("");
-  mxSel.innerHTML = `<option value="">모든 DocType</option>` + opts;
-  docSel.innerHTML = `<option value="">선택</option>` + opts;
-}
-
-function renderMatrix(){
-  const el = $("#matrixTable");
-
-  const modelKw = ($("#mxModelFilter").value||"").trim().toLowerCase();
-  const dtId = $("#mxDocTypeFilter").value;
-
-  const models = state.models
-    .filter(m=>{
-      if(!modelKw) return true;
-      return (m.product_code+" "+m.model_name+" "+(m.gas_type||"")).toLowerCase().includes(modelKw);
-    })
-    .slice(0, 80); // MVP: 성능 제한
-
-  const doctypes = state.doctypes
-    .filter(d=>!dtId || d.doctype_id===dtId)
-    .slice(0, 30);
-
-  if(models.length===0 || doctypes.length===0){
-    el.innerHTML = "<thead><tr><th>표시할 데이터가 없다</th></tr></thead>";
-    return;
-  }
-
-  // table header
-  const thead = `<thead><tr>
-    <th>제품코드</th><th>모델명</th><th>가스</th>
-    ${doctypes.map(d=>`<th>${clampStr(d.name, 18)}</th>`).join("")}
-  </tr></thead>`;
-
-  // body
-  const tbodyRows = models.map(m=>{
-    const tds = doctypes.map(d=>{
-      const key = `${m.model_id}__${d.doctype_id}`;
-      const cur = state.requirements[key]?.status || "";
-      const sel = `<select data-mid="${m.model_id}" data-dt="${d.doctype_id}" class="input" style="padding:6px;border-radius:8px;">
-        <option value="">(미설정)</option>
-        ${REQ_STATUSES.map(s=>`<option value="${s}" ${cur===s?"selected":""}>${s}</option>`).join("")}
-      </select>`;
-      return `<td>${sel}</td>`;
-    }).join("");
-
-    return `<tr>
-      <td><b>${m.product_code}</b></td>
-      <td>${clampStr(m.model_name, 22)}</td>
-      <td>${m.gas_type||"-"}</td>
-      ${tds}
-    </tr>`;
-  }).join("");
-
-  el.innerHTML = thead + `<tbody>${tbodyRows}</tbody>`;
-
-  el.querySelectorAll("select[data-mid]").forEach(s=>{
-    s.addEventListener("change", ()=>{
-      const mid = s.dataset.mid;
-      const dt = s.dataset.dt;
-      const val = s.value;
-      if(!val){
-        delete state.requirements[`${mid}__${dt}`];
-      }else{
-        setRequirement(mid, dt, val);
-      }
-      saveState(state);
-    });
-  });
-}
-
-function renderDocuments(){
-  const el = $("#docTable");
-  const keyword = ($("#docFilter").value||"").trim().toLowerCase();
-
-  const rows = state.documents
-    .map(d=>{
-      const dt = state.doctypes.find(x=>x.doctype_id===d.doctype_id);
-      const mappedModels = state.documentModelMap
-        .filter(x=>x.document_id===d.document_id)
-        .map(x=>state.models.find(m=>m.model_id===x.model_id))
-        .filter(Boolean);
-      const modelText = mappedModels.slice(0,3).map(m=>m.product_code).join(", ") + (mappedModels.length>3 ? ` 외 ${mappedModels.length-3}건` : "");
-      return {
-        ...d,
-        _doctypeName: dt ? dt.name : "(삭제된 DocType)",
-        _status: docStatus(d),
-        _modelText: modelText || (d.scope==="MODEL" ? "-" : "(전사/공장 범위)")
-      };
+  const rows = state.certs
+    .map(c=>{
+      const models = getModelsByCert(c.cert_id);
+      const gasSet = Array.from(new Set(models.map(m=>m.gas_type||"").filter(Boolean)));
+      const status = calcStatus(c);
+      return { ...c, _models: models, _gasSet: gasSet, _status: status };
     })
     .filter(r=>{
-      if(!keyword) return true;
-      return (r.title+" "+r._doctypeName+" "+(r.issuer||"")).toLowerCase().includes(keyword);
+      if(fIssuer && !(r.issuer||"").toLowerCase().includes(fIssuer)) return false;
+      if(fType && !(r.type||"").toLowerCase().includes(fType)) return false;
+
+      if(fModelName){
+        const t = r._models.map(m=>m.model_name).join(" ").toLowerCase();
+        if(!t.includes(fModelName)) return false;
+      }
+      if(fGas){
+        const g = r._gasSet.join(" ").toLowerCase();
+        if(!g.includes(fGas)) return false;
+      }
+
+      // 기간 필터: 유효기간(To)이 존재할 때만 비교
+      if((fFrom || fTo) && r.valid_from && r.valid_to){
+        if(fFrom && r.valid_to < fFrom) return false;
+        if(fTo && r.valid_from > fTo) return false;
+      }
+      return true;
     })
-    .sort((a,b)=>(a.expiry||"9999-99-99").localeCompare(b.expiry||"9999-99-99"));
+    .sort((a,b)=>(a.valid_to||"9999-99-99").localeCompare(b.valid_to||"9999-99-99"));
 
-  const cols = [
-    {label:"상태", render:r=>badgeForStatus(r._status)},
-    {label:"DocType", render:r=>clampStr(r._doctypeName, 18)},
-    {label:"문서명", render:r=>`<b title="${r.title}">${clampStr(r.title, 28)}</b>`},
-    {label:"범위", render:r=>r.scope + (r.plant ? `(${r.plant})` : "")},
-    {label:"만료일", render:r=>r.expiry||"-"},
-    {label:"적용모델", render:r=>clampStr(r._modelText, 24)},
-    {label:"파일", render:r=>r.file ? `<button class="btn" data-open="${r.document_id}">다운로드</button>` : "-"},
-    {label:"", render:r=>`<button class="btn" data-del="${r.document_id}">삭제</button>`},
-  ];
-  renderTable(el, cols, rows);
+  const el = $("#certTable");
+  el.innerHTML = `
+    <thead><tr>
+      <th>적용대상</th>
+      <th>성적서(인증서)번호</th>
+      <th>발급기관</th>
+      <th>종류</th>
+      <th>발급일자</th>
+      <th>유효기간(From)</th>
+      <th>유효기간(To)</th>
+      <th>상태</th>
+      <th>파일다운로드</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r=>`
+        <tr>
+          <td><button class="btn" data-view-target="${r.cert_id}">확인하기</button></td>
+          <td><b>${r.cert_no}</b></td>
+          <td>${r.issuer}</td>
+          <td>${r.type}</td>
+          <td>${r.issued || "-"}</td>
+          <td>${r.valid_from || "-"}</td>
+          <td>${r.valid_to || "-"}</td>
+          <td>${badgeForStatus(r._status)}</td>
+          <td>
+            ${r.file ? `<button class="btn" data-dl="${r.cert_id}">⬇</button>` : "-"}
+          </td>
+        </tr>
+      `).join("")}
+    </tbody>
+  `;
 
-  el.querySelectorAll("button[data-del]").forEach(b=>{
-    b.addEventListener("click", ()=>deleteDocument(b.dataset.del));
+  el.querySelectorAll("[data-view-target]").forEach(b=>{
+    b.addEventListener("click", ()=> openTargetView(b.dataset.viewTarget));
   });
-  el.querySelectorAll("button[data-open]").forEach(b=>{
-    b.addEventListener("click", ()=>openDocumentFile(b.dataset.open));
+  el.querySelectorAll("[data-dl]").forEach(b=>{
+    b.addEventListener("click", ()=> downloadFile(b.dataset.dl));
   });
 }
 
-function renderSearch(){
-  const el = $("#searchTable");
-  const kw = ($("#qKeyword").value||"").trim().toLowerCase();
-  const qModel = ($("#qModel").value||"").trim().toLowerCase();
-  const qStatus = $("#qStatus").value;
-
-  const rows = state.documents.map(d=>{
-    const dt = state.doctypes.find(x=>x.doctype_id===d.doctype_id);
-    const mapped = state.documentModelMap
-      .filter(x=>x.document_id===d.document_id)
-      .map(x=>state.models.find(m=>m.model_id===x.model_id))
-      .filter(Boolean);
-    const st = docStatus(d);
-    return {
-      ...d,
-      _doctypeName: dt ? dt.name : "(삭제된 DocType)",
-      _status: st,
-      _models: mapped
-    };
-  }).filter(r=>{
-    if(qStatus && r._status!==qStatus) return false;
-    if(kw){
-      const t = (r.title+" "+r._doctypeName+" "+(r.issuer||"")).toLowerCase();
-      if(!t.includes(kw)) return false;
-    }
-    if(qModel){
-      const mt = r._models.map(m=>`${m.product_code} ${m.model_name}`).join(" ").toLowerCase();
-      const allow = mt.includes(qModel) || (r.scope!=="MODEL" && (r.title||"").toLowerCase().includes(qModel));
-      if(!allow) return false;
-    }
-    return true;
-  });
-
-  const cols = [
-    {label:"상태", render:r=>badgeForStatus(r._status)},
-    {label:"DocType", render:r=>clampStr(r._doctypeName, 18)},
-    {label:"문서명", render:r=>clampStr(r.title, 30)},
-    {label:"기관", render:r=>r.issuer||"-"},
-    {label:"만료일", render:r=>r.expiry||"-"},
-    {label:"적용모델", render:r=>{
-      if(r.scope!=="MODEL") return "(전사/공장)";
-      const codes = r._models.map(m=>m.product_code).slice(0,4);
-      return codes.join(", ") + (r._models.length>4 ? ` 외 ${r._models.length-4}건` : "");
-    }},
-  ];
-  renderTable(el, cols, rows);
+// ===== status badge
+function badgeForStatus(st){
+  if(st==="VALID") return `<span class="badge b-valid">유효</span>`;
+  if(st==="DUE") return `<span class="badge b-due">임박</span>`;
+  if(st==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
+  return "";
 }
 
-function renderExpiry(){
-  const el = $("#expiryTable");
-  const rows = state.documents
-    .map(d=>{
-      const dt = state.doctypes.find(x=>x.doctype_id===d.doctype_id);
-      const st = docStatus(d);
-      return {
-        ...d,
-        _doctypeName: dt ? dt.name : "(삭제된 DocType)",
-        _status: st,
-        _left: d.expiry ? daysBetween(todayISO(), d.expiry) : null
-      };
-    })
-    .filter(r=>r._status==="DUE" || r._status==="EXPIRED")
-    .sort((a,b)=>(a._left ?? 999999) - (b._left ?? 999999));
-
-  const cols = [
-    {label:"상태", render:r=>badgeForStatus(r._status)},
-    {label:"D-일", render:r=>r._left===null ? "-" : r._left},
-    {label:"DocType", render:r=>clampStr(r._doctypeName, 18)},
-    {label:"문서명", render:r=>clampStr(r.title, 34)},
-    {label:"만료일", render:r=>r.expiry||"-"},
-    {label:"범위", render:r=>r.scope + (r.plant?`(${r.plant})`:"")},
-  ];
-  renderTable(el, cols, rows);
-
-  // store summary for mail
-  state._lastExpiryRows = rows;
-}
-
-function refreshAll(){
-  // settings
-  $("#dueDays").value = state.settings.dueDays ?? 60;
-
-  renderModels();
-  renderDocTypes();
-  renderMatrix();
-
-  updateScopeUI();
-  renderModelPicker();
-  renderDocuments();
-  renderExpiry();
-}
-
-/* =========================
-   Export / Reset / Template
-========================= */
+// ===== export/reset
 function exportJson(){
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type:"application/json" });
-  downloadBlob("cert_manager_export.json", blob);
+  const blob = new Blob([JSON.stringify(state,null,2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cert_system_export.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 500);
 }
-
 function resetAll(){
   if(!confirm("모든 데이터를 삭제하고 초기화하나?")) return;
   localStorage.removeItem(LS_KEY);
   state = loadState();
   saveState(state);
-  refreshAll();
+  pickedModelIds = new Set();
+  updatePickedCount();
+  renderModels();
+  renderTargetPicker();
+  renderCertList();
 }
 
-function downloadExcelTemplate(){
-  // create workbook
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["제품코드","모델명","가스구분"],
-    ["P001","RANGE-ABC","LNG"],
-    ["P002","RANGE-XYZ","LPG"]
-  ]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "models");
-  const out = XLSX.write(wb, { bookType:"xlsx", type:"array" });
-  downloadBlob("model_master_template.xlsx", new Blob([out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-}
-
-/* =========================
-   Mail helpers (manual)
-========================= */
-function buildExpirySummaryText(){
-  const rows = state.documents
-    .map(d=>{
-      const dt = state.doctypes.find(x=>x.doctype_id===d.doctype_id);
-      const st = docStatus(d);
-      if(st!=="DUE" && st!=="EXPIRED") return null;
-      const left = d.expiry ? daysBetween(todayISO(), d.expiry) : null;
-      const dname = dt ? dt.name : "(삭제된 DocType)";
-      return `- [${st}] D${left!==null?left:"-"} | ${dname} | ${d.title} | 만료:${d.expiry||"-"} | 범위:${d.scope}${d.plant?`(${d.plant})`:""}`;
-    })
-    .filter(Boolean);
-
-  const head = `만료/임박 목록 (기준 ${state.settings.dueDays}일, ${todayISO()})`;
-  return head + "\n" + (rows.length ? rows.join("\n") : "- 대상 없음");
-}
-
-function buildMailto(){
-  const emails = ($("#manualEmails").value||"").trim();
-  if(!emails){ alert("수신자 이메일을 입력해야 한다."); return; }
-  const subject = encodeURIComponent(`[인증서관리] 만료/임박 알림 (${todayISO()})`);
-  const body = encodeURIComponent(buildExpirySummaryText());
-  const url = `mailto:${encodeURIComponent(emails)}?subject=${subject}&body=${body}`;
-  $("#mailtoOut").innerHTML = `<a href="${url}">${clampStr(url, 120)}</a>`;
-}
-
-async function copySummary(){
-  const txt = buildExpirySummaryText();
-  await navigator.clipboard.writeText(txt);
-  alert("요약을 클립보드에 복사했다.");
-}
-
-/* =========================
-   Event bindings
-========================= */
+// ===== bindings
 function bindEvents(){
-  // header
-  $("#btnExportJson").addEventListener("click", exportJson);
-  $("#btnReset").addEventListener("click", resetAll);
+  bindModalClose();
 
-  // models
+  // open modals
+  $("#btnOpenModelMaster").addEventListener("click", ()=>{
+    openModal("modalModelMaster");
+    renderModels();
+  });
+
+  $("#btnOpenRegMaster").addEventListener("click", ()=>{
+    if(state.models.length===0){
+      alert("먼저 모델 Master를 업로드/등록해야 한다.");
+      return;
+    }
+    openModal("modalRegMaster");
+    updatePickedCount();
+  });
+
+  // 모델 업로드/템플릿/수기
   $("#btnImportModels").addEventListener("click", async ()=>{
-    const file = $("#modelFile").files?.[0];
     try{
+      const file = $("#modelFile").files?.[0];
       const res = await importModelsFromExcel(file);
       $("#modelImportResult").textContent =
         `총 ${res.total}행 처리: 신규 ${res.inserted}, 업데이트 ${res.updated}, 스킵 ${res.skipped}`;
-      refreshAll();
+      renderModels();
+      renderTargetPicker();
     }catch(e){
       alert(e.message || "업로드 실패");
     }
   });
-  $("#btnDownloadTemplate").addEventListener("click", downloadExcelTemplate);
-  $("#btnAddModel").addEventListener("click", addModelManual);
+  $("#btnDownloadModelTemplate").addEventListener("click", downloadModelTemplate);
   $("#modelFilter").addEventListener("input", renderModels);
+  $("#btnAddModelManual").addEventListener("click", addModelManual);
 
-  // doctypes
-  $("#btnAddDocType").addEventListener("click", addDocType);
-  $("#dtFilter").addEventListener("input", renderDocTypes);
-
-  // matrix
-  $("#mxModelFilter").addEventListener("input", renderMatrix);
-  $("#mxDocTypeFilter").addEventListener("change", renderMatrix);
-  $("#btnMatrixBulkFill").addEventListener("click", bulkFillTBDForFilteredModels);
-
-  // documents
-  $("#docScope").addEventListener("change", ()=>{
-    updateScopeUI();
+  // 등록: 파일명 표시
+  $("#regFile").addEventListener("change", ()=>{
+    const f = $("#regFile").files?.[0];
+    $("#regFilePath").value = f ? f.name : "";
   });
-  $("#docModelSearch").addEventListener("input", renderModelPicker);
-  $("#btnAddDocument").addEventListener("click", addDocument);
-  $("#docFilter").addEventListener("input", renderDocuments);
-
-  // search
-  $("#btnSearch").addEventListener("click", renderSearch);
-
-  // expiry
-  $("#btnRecalcDue").addEventListener("click", ()=>{
-    const v = Number($("#dueDays").value);
-    if(Number.isNaN(v) || v<0){ alert("0 이상의 숫자여야 한다."); return; }
-    state.settings.dueDays = v;
-    saveState(state);
-    renderExpiry();
+  $("#regNoExpiry").addEventListener("change", ()=>{
+    const on = $("#regNoExpiry").checked;
+    $("#regValidFrom").disabled = on;
+    $("#regValidTo").disabled = on;
   });
-  $("#btnBuildMailto").addEventListener("click", buildMailto);
-  $("#btnCopySummary").addEventListener("click", copySummary);
+
+  // 적용대상 지정 팝업
+  $("#btnOpenTargetPicker").addEventListener("click", ()=>{
+    openModal("modalTargetPicker");
+    renderTargetPicker();
+  });
+  $("#btnTpSearch").addEventListener("click", renderTargetPicker);
+  $("#tpKeyword").addEventListener("input", renderTargetPicker);
+
+  $("#btnTpSelectAll").addEventListener("click", ()=>{
+    state.models.forEach(m=>pickedModelIds.add(m.model_id));
+    renderTargetPicker();
+    updatePickedCount();
+  });
+  $("#btnTpClear").addEventListener("click", ()=>{
+    pickedModelIds = new Set();
+    renderTargetPicker();
+    updatePickedCount();
+  });
+  $("#btnTpApply").addEventListener("click", applyPickedTargets);
+
+  // 저장
+  $("#btnSaveCert").addEventListener("click", saveCert);
+
+  // 검색
+  $("#btnSearch").addEventListener("click", renderCertList);
+
+  // export/reset
+  $("#btnExport").addEventListener("click", exportJson);
+  $("#btnReset").addEventListener("click", resetAll);
 }
 
-/* =========================
-   Init
-========================= */
+// ===== init
 function init(){
-  initTabs();
-  bindEvents();
-  // seed: if empty, add a couple of doctypes for convenience
-  if(state.doctypes.length===0){
-    state.doctypes.push(
-      { doctype_id: uid("dt"), category:"CERT", name:"ISO 9001", org:"", defaultRenewMonths:36 },
-      { doctype_id: uid("dt"), category:"CERT", name:"KS B 8114", org:"", defaultRenewMonths:null },
-      { doctype_id: uid("dt"), category:"TEST_REPORT", name:"연소성능 시험성적서", org:"", defaultRenewMonths:null },
+  // seed: 예시 모델 몇 개(원하면 삭제 가능)
+  if(state.models.length===0){
+    state.models.push(
+      { model_id: uid("m"), product_code:"158060002", model_name:"RC620-22KF", gas_type:"LNG" },
+      { model_id: uid("m"), product_code:"158070002", model_name:"RC620-27KF", gas_type:"LNG" },
+      { model_id: uid("m"), product_code:"158080002", model_name:"RC620-30KF", gas_type:"LNG" }
     );
     saveState(state);
   }
-  refreshAll();
+
+  bindEvents();
+  renderModels();
+  renderTargetPicker();
+  renderCertList();
+  updatePickedCount();
 }
 init();
