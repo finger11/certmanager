@@ -1,722 +1,309 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <title>인증서관리시스템</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>인증서관리시스템 (GitHub MVP)</title>
+  <link rel="stylesheet" href="./styles.css" />
 
-  <!-- 간단한 기본 스타일 -->
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Roboto, "Helvetica Neue", Arial, "Noto Sans KR", sans-serif;
-      background: #f4f5f7;
-      color: #222;
-    }
-
-    header {
-      background: #324bff;
-      color: #fff;
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    }
-
-    header .title {
-      font-size: 1.3rem;
-      font-weight: 600;
-    }
-
-    header .subtitle {
-      font-size: 0.9rem;
-      opacity: 0.85;
-    }
-
-    header .actions button {
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: none;
-      font-size: 0.9rem;
-      cursor: pointer;
-      background: #fff;
-      color: #324bff;
-      font-weight: 600;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    }
-
-    main {
-      display: flex;
-      padding: 16px;
-      gap: 16px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .panel {
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
-
-    .panel-left {
-      flex: 2;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .panel-right {
-      flex: 1.2;
-      min-width: 260px;
-      max-width: 380px;
-      height: fit-content;
-      position: sticky;
-      top: 16px;
-    }
-
-    .panel h2 {
-      margin: 0 0 8px 0;
-      font-size: 1.05rem;
-    }
-
-    .search-row {
-      display: grid;
-      grid-template-columns: 1.6fr 1.2fr 1.2fr;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .search-row label {
-      font-size: 0.8rem;
-      margin-bottom: 4px;
-      color: #555;
-    }
-
-    .search-row input,
-    .search-row select {
-      width: 100%;
-      padding: 8px;
-      border-radius: 8px;
-      border: 1px solid #d0d4db;
-      font-size: 0.9rem;
-      background: #fafbfc;
-    }
-
-    .search-row .field {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .table-wrapper {
-      border-radius: 10px;
-      border: 1px solid #e1e4ea;
-      overflow: hidden;
-      background: #fff;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-    }
-
-    thead {
-      background: #f0f2f6;
-    }
-
-    th, td {
-      padding: 8px 10px;
-      text-align: left;
-      border-bottom: 1px solid #eceff4;
-      white-space: nowrap;
-    }
-
-    th {
-      font-weight: 600;
-      font-size: 0.85rem;
-      color: #555;
-    }
-
-    tbody tr {
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    tbody tr:hover {
-      background: #f5f7fb;
-    }
-
-    tbody tr.selected {
-      background: #e2e7ff;
-    }
-
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .tag-valid {
-      background: #e3fcef;
-      color: #108c4a;
-    }
-
-    .tag-expired {
-      background: #feeceb;
-      color: #c4302b;
-    }
-
-    .tag-warning {
-      background: #fff4e5;
-      color: #b26a00;
-    }
-
-    .detail-section {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      font-size: 0.9rem;
-    }
-
-    .detail-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .detail-label {
-      font-size: 0.8rem;
-      color: #888;
-      min-width: 80px;
-    }
-
-    .detail-value {
-      text-align: right;
-      flex: 1;
-      word-break: break-all;
-    }
-
-    .detail-title {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .detail-note {
-      font-size: 0.8rem;
-      color: #666;
-      background: #f8fafc;
-      padding: 8px;
-      border-radius: 8px;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      border: 1px solid #d0d4db;
-      padding: 2px 8px;
-      font-size: 0.75rem;
-      gap: 4px;
-      margin-right: 6px;
-    }
-
-    .pill-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #43b581;
-    }
-
-    .pill-warning .pill-dot {
-      background: #f39c12;
-    }
-
-    .pill-danger .pill-dot {
-      background: #e74c3c;
-    }
-
-    .detail-actions {
-      margin-top: 8px;
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .detail-actions button {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid #d0d4db;
-      background: #fff;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-
-    .detail-actions button.primary {
-      background: #324bff;
-      color: #fff;
-      border-color: #324bff;
-    }
-
-    /* 모달 */
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.35);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-
-    .modal {
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px 18px;
-      max-width: 420px;
-      width: 100%;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.25);
-    }
-
-    .modal header {
-      background: none;
-      color: inherit;
-      padding: 0;
-      box-shadow: none;
-      justify-content: space-between;
-    }
-
-    .modal-title {
-      font-size: 1rem;
-      font-weight: 600;
-    }
-
-    .modal-close {
-      border: none;
-      background: none;
-      font-size: 1.1rem;
-      cursor: pointer;
-    }
-
-    .modal-body {
-      margin-top: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 0.85rem;
-    }
-
-    .modal-body label {
-      font-size: 0.8rem;
-      margin-bottom: 2px;
-    }
-
-    .modal-body input,
-    .modal-body select,
-    .modal-body textarea {
-      width: 100%;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid #d0d4db;
-      font-size: 0.85rem;
-      resize: vertical;
-    }
-
-    .modal-footer {
-      margin-top: 12px;
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .modal-footer button {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid #d0d4db;
-      background: #fff;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }
-
-    .modal-footer button.primary {
-      background: #324bff;
-      color: #fff;
-      border-color: #324bff;
-    }
-
-    @media (max-width: 900px) {
-      main {
-        flex-direction: column;
-      }
-
-      .panel-right {
-        position: static;
-        max-width: none;
-      }
-
-      .search-row {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+  <!-- SheetJS: Excel 읽기 (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
+
 <body>
-  <header>
-    <div>
-      <div class="title">인증서관리시스템</div>
-      <div class="subtitle">품질/환경/안전 등 각종 인증서의 유효기간과 상태를 한눈에 관리하는 페이지</div>
+  <header class="header">
+    <div class="header__left">
+      <div class="header__title">인증서관리시스템</div>
+      <div class="header__sub">GitHub Pages MVP (LocalStorage 기반)</div>
     </div>
-    <div class="actions">
-      <button id="btnOpenModal">+ 새 인증서 등록</button>
+    <div class="header__right">
+      <button class="btn" id="btnExportJson">데이터 Export(JSON)</button>
+      <button class="btn btn--danger" id="btnReset">초기화</button>
     </div>
   </header>
 
-  <main>
-    <!-- 좌측: 검색 + 목록 -->
-    <section class="panel panel-left">
-      <div>
-        <h2>인증서 목록</h2>
-        <div class="search-row">
-          <div class="field">
-            <label for="searchText">인증서명 / 발급기관 검색</label>
-            <input type="text" id="searchText" placeholder="예: ISO 9001, 한국표준협회…" />
-          </div>
-          <div class="field">
-            <label for="filterType">구분</label>
-            <select id="filterType">
-              <option value="">전체</option>
-              <option value="품질">품질</option>
-              <option value="환경">환경</option>
-              <option value="안전">안전</option>
-              <option value="기타">기타</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="filterStatus">상태</label>
-            <select id="filterStatus">
-              <option value="">전체</option>
-              <option value="유효">유효</option>
-              <option value="만료임박">만료임박</option>
-              <option value="만료">만료</option>
-            </select>
-          </div>
-        </div>
-      </div>
+  <main class="layout">
+    <aside class="sidebar">
+      <nav class="nav">
+        <button class="nav__item is-active" data-tab="tab-models">1) 모델 업로드</button>
+        <button class="nav__item" data-tab="tab-doctypes">2) 문서종류(DocType)</button>
+        <button class="nav__item" data-tab="tab-matrix">3) 모델 요구 매트릭스</button>
+        <button class="nav__item" data-tab="tab-documents">4) 문서 등록</button>
+        <button class="nav__item" data-tab="tab-search">5) 검색</button>
+        <button class="nav__item" data-tab="tab-expiry">6) 만료/알림</button>
+      </nav>
 
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:40px;">No</th>
-              <th>인증서명</th>
-              <th>발급기관</th>
-              <th>유효기간</th>
-              <th>상태</th>
-            </tr>
-          </thead>
-          <tbody id="certTableBody">
-            <!-- JS에서 동적으로 채움 -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- 우측: 상세정보 -->
-    <aside class="panel panel-right">
-      <h2>상세 정보</h2>
-      <div id="detailContainer" class="detail-section">
-        <div class="detail-title">인증서를 선택하세요</div>
-        <div class="detail-note">
-          좌측 목록에서 인증서를 클릭하면, 발급기관, 인증범위, 유효기간, 관리 메모 등 상세정보가 표시된다.
+      <div class="card">
+        <div class="card__title">저장 방식</div>
+        <div class="card__body small">
+          본 MVP는 브라우저 LocalStorage에 저장된다. <br/>
+          실제 운영(메일 자동발송/권한/공유)은 백엔드가 필요하다.
         </div>
       </div>
     </aside>
+
+    <section class="content">
+      <!-- TAB 1: 모델 업로드 -->
+      <section class="tab is-active" id="tab-models">
+        <h2>1) 모델 Master 업로드</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card__title">엑셀 업로드</div>
+            <div class="card__body">
+              <div class="hint">
+                엑셀 첫 시트에서 컬럼명을 아래 중 하나로 인식한다.<br/>
+                <b>제품코드</b>(product_code), <b>모델명</b>(model_name), <b>가스구분</b>(gas_type)
+              </div>
+
+              <input type="file" id="modelFile" accept=".xlsx,.xls" />
+              <div class="row">
+                <button class="btn btn--primary" id="btnImportModels">업로드 적용</button>
+                <button class="btn" id="btnDownloadTemplate">엑셀 템플릿 다운로드</button>
+              </div>
+              <div class="small muted" id="modelImportResult"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__title">현재 모델 목록</div>
+            <div class="card__body">
+              <div class="row">
+                <input class="input" id="modelFilter" placeholder="모델/제품코드 검색" />
+                <button class="btn" id="btnAddModel">수기 추가</button>
+              </div>
+              <div class="tableWrap">
+                <table class="table" id="modelTable"></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: DocType -->
+      <section class="tab" id="tab-doctypes">
+        <h2>2) 문서종류(DocType) 관리</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card__title">DocType 추가</div>
+            <div class="card__body">
+              <label class="label">구분</label>
+              <select class="input" id="dtCategory">
+                <option value="CERT">인증서(CERT)</option>
+                <option value="TEST_REPORT">시험성적서(TEST_REPORT)</option>
+              </select>
+
+              <label class="label">문서종류명</label>
+              <input class="input" id="dtName" placeholder="예: ISO 9001, KS B 8114" />
+
+              <label class="label">발급기관(선택)</label>
+              <input class="input" id="dtOrg" placeholder="예: 한국표준협회" />
+
+              <label class="label">기본 갱신주기(개월, 선택)</label>
+              <input class="input" id="dtRenew" type="number" min="0" placeholder="예: 36" />
+
+              <div class="row">
+                <button class="btn btn--primary" id="btnAddDocType">추가</button>
+              </div>
+              <div class="small muted">※ 실제 문서 등록 시 갱신주기를 개별 문서에서 override 가능</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__title">DocType 목록</div>
+            <div class="card__body">
+              <div class="row">
+                <input class="input" id="dtFilter" placeholder="DocType 검색" />
+              </div>
+              <div class="tableWrap">
+                <table class="table" id="dtTable"></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: 매트릭스 -->
+      <section class="tab" id="tab-matrix">
+        <h2>3) 모델 요구 매트릭스</h2>
+
+        <div class="card">
+          <div class="card__body">
+            <div class="row">
+              <input class="input" id="mxModelFilter" placeholder="모델/제품코드 검색" />
+              <select class="input" id="mxDocTypeFilter">
+                <option value="">모든 DocType</option>
+              </select>
+              <button class="btn" id="btnMatrixBulkFill">선택 모델에 DocType 일괄(TBD)</button>
+            </div>
+
+            <div class="hint">
+              상태값: REQUIRED(필수) / NOT_REQUIRED(불필요) / NOT_POSSIBLE(취득불가) / TBD(미정)
+            </div>
+
+            <div class="tableWrap">
+              <table class="table" id="matrixTable"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: 문서 등록 -->
+      <section class="tab" id="tab-documents">
+        <h2>4) 문서 등록</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card__title">새 문서 등록</div>
+            <div class="card__body">
+              <label class="label">DocType</label>
+              <select class="input" id="docTypeSelect"></select>
+
+              <label class="label">문서명(표시용)</label>
+              <input class="input" id="docTitle" placeholder="예: KS B 8114 가스 레인지 (2공장)" />
+
+              <label class="label">발급기관(선택)</label>
+              <input class="input" id="docIssuer" placeholder="예: 한국표준협회" />
+
+              <div class="grid3">
+                <div>
+                  <label class="label">발급일</label>
+                  <input class="input" id="docIssued" type="date" />
+                </div>
+                <div>
+                  <label class="label">만료일</label>
+                  <input class="input" id="docExpiry" type="date" />
+                </div>
+                <div>
+                  <label class="label">갱신주기(개월)</label>
+                  <input class="input" id="docRenew" type="number" min="0" placeholder="선택" />
+                </div>
+              </div>
+
+              <label class="label">적용범위</label>
+              <select class="input" id="docScope">
+                <option value="COMPANY">전사</option>
+                <option value="PLANT">공장</option>
+                <option value="MODEL">모델(품목)</option>
+              </select>
+
+              <div id="plantBox" class="hidden">
+                <label class="label">공장(텍스트로 입력)</label>
+                <input class="input" id="docPlant" placeholder="예: 2공장" />
+              </div>
+
+              <label class="label">적용 모델 선택(다중)</label>
+              <div class="pick">
+                <input class="input" id="docModelSearch" placeholder="모델 검색 후 추가" />
+                <div class="pick__list" id="docModelPickList"></div>
+                <div class="pick__chips" id="docModelChips"></div>
+              </div>
+
+              <label class="label">파일 첨부(선택)</label>
+              <input type="file" id="docFile" />
+
+              <label class="label">메모(선택)</label>
+              <textarea class="input" id="docMemo" rows="3"></textarea>
+
+              <div class="row">
+                <button class="btn btn--primary" id="btnAddDocument">등록</button>
+              </div>
+              <div class="small muted">※ 파일은 브라우저 저장(Export 시 base64 포함). 운영 시에는 저장소(S3 등)로 대체 권장</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__title">등록된 문서</div>
+            <div class="card__body">
+              <div class="row">
+                <input class="input" id="docFilter" placeholder="문서명/기관/DocType 검색" />
+              </div>
+              <div class="tableWrap">
+                <table class="table" id="docTable"></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: 검색 -->
+      <section class="tab" id="tab-search">
+        <h2>5) 검색</h2>
+        <div class="card">
+          <div class="card__body">
+            <div class="grid3">
+              <input class="input" id="qKeyword" placeholder="키워드(문서/기관/DocType)" />
+              <input class="input" id="qModel" placeholder="모델/제품코드" />
+              <select class="input" id="qStatus">
+                <option value="">상태 전체</option>
+                <option value="VALID">유효</option>
+                <option value="DUE">만료임박</option>
+                <option value="EXPIRED">만료</option>
+              </select>
+            </div>
+            <div class="row">
+              <button class="btn btn--primary" id="btnSearch">검색</button>
+            </div>
+
+            <div class="tableWrap">
+              <table class="table" id="searchTable"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: 만료/알림 -->
+      <section class="tab" id="tab-expiry">
+        <h2>6) 만료/알림(정적 MVP)</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card__title">만료 임박 기준</div>
+            <div class="card__body">
+              <label class="label">임박 기준(일)</label>
+              <input class="input" id="dueDays" type="number" min="0" />
+              <div class="row">
+                <button class="btn btn--primary" id="btnRecalcDue">재계산</button>
+              </div>
+              <div class="hint">
+                백엔드 없이도 “임박 목록”은 가능하다. <br/>
+                자동 메일 발송은 불가하므로, 아래에서 대상 리스트를 생성한다.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__title">메일 대상 생성(수동)</div>
+            <div class="card__body">
+              <label class="label">수신자(쉼표로 구분)</label>
+              <input class="input" id="manualEmails" placeholder="예: a@company.com,b@company.com" />
+              <div class="row">
+                <button class="btn" id="btnBuildMailto">mailto 생성</button>
+                <button class="btn" id="btnCopySummary">요약 복사</button>
+              </div>
+              <div class="small muted" id="mailtoOut"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__title">만료/임박 목록</div>
+          <div class="card__body">
+            <div class="tableWrap">
+              <table class="table" id="expiryTable"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
   </main>
 
-  <!-- 모달: 새 인증서 등록 -->
-  <div class="modal-backdrop" id="modalBackdrop">
-    <div class="modal">
-      <header>
-        <div class="modal-title">새 인증서 등록(샘플)</div>
-        <button class="modal-close" id="btnCloseModal">&times;</button>
-      </header>
-      <div class="modal-body">
-        <div>
-          <label for="newName">인증서명</label>
-          <input type="text" id="newName" placeholder="예: ISO 9001 품질경영시스템" />
-        </div>
-        <div>
-          <label for="newOrg">발급기관</label>
-          <input type="text" id="newOrg" placeholder="예: 한국표준협회" />
-        </div>
-        <div>
-          <label for="newType">구분</label>
-          <select id="newType">
-            <option value="품질">품질</option>
-            <option value="환경">환경</option>
-            <option value="안전">안전</option>
-            <option value="기타">기타</option>
-          </select>
-        </div>
-        <div>
-          <label for="newValidFrom">유효기간 시작일</label>
-          <input type="date" id="newValidFrom" />
-        </div>
-        <div>
-          <label for="newValidTo">유효기간 종료일</label>
-          <input type="date" id="newValidTo" />
-        </div>
-        <div>
-          <label for="newScope">인증범위 / 비고</label>
-          <textarea id="newScope" rows="3" placeholder="예: 가스보일러 및 연소기구의 설계, 제조 및 관련 서비스"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button id="btnCancel">취소</button>
-        <button class="primary" id="btnSave">저장(메모리)</button>
-      </div>
-    </div>
-  </div>
+  <footer class="footer small muted">
+    GitHub Pages MVP — 저장: LocalStorage / Excel 업로드: SheetJS / 메일 자동발송: 백엔드 필요
+  </footer>
 
-  <!-- 간단 JS -->
-  <script>
-    // 샘플 인증서 데이터 (추후 백엔드/파일 연동 가능)
-    const certificates = [
-      {
-        id: 1,
-        name: "ISO 9001 품질경영시스템",
-        type: "품질",
-        org: "한국표준협회",
-        validFrom: "2023-03-01",
-        validTo: "2026-02-28",
-        status: "유효",
-        scope: "가스보일러 및 연소기구의 설계, 제조 및 관련 서비스"
-      },
-      {
-        id: 2,
-        name: "ISO 14001 환경경영시스템",
-        type: "환경",
-        org: "한국품질재단",
-        validFrom: "2022-07-01",
-        validTo: "2025-06-30",
-        status: "만료임박",
-        scope: "전 사업장의 환경경영시스템 운영"
-      },
-      {
-        id: 3,
-        name: "산업안전보건경영시스템 인증",
-        type: "안전",
-        org: "안전보건공단",
-        validFrom: "2019-01-01",
-        validTo: "2022-12-31",
-        status: "만료",
-        scope: "생산라인 작업장의 안전보건경영시스템"
-      }
-    ];
-
-    let selectedId = null;
-
-    const $ = (selector) => document.querySelector(selector);
-
-    const certTableBody = $("#certTableBody");
-    const searchTextEl = $("#searchText");
-    const filterTypeEl = $("#filterType");
-    const filterStatusEl = $("#filterStatus");
-    const detailContainer = $("#detailContainer");
-
-    function getStatusTag(status) {
-      let cls = "tag";
-      if (status === "유효") cls += " tag-valid";
-      else if (status === "만료임박") cls += " tag-warning";
-      else if (status === "만료") cls += " tag-expired";
-      return `<span class="${cls}">${status}</span>`;
-    }
-
-    function formatDateRange(from, to) {
-      if (!from && !to) return "-";
-      const f = from ? from.replace(/-/g, ".") : "";
-      const t = to ? to.replace(/-/g, ".") : "";
-      return `${f} ~ ${t}`;
-    }
-
-    function renderTable() {
-      const keyword = searchTextEl.value.trim().toLowerCase();
-      const type = filterTypeEl.value;
-      const status = filterStatusEl.value;
-
-      certTableBody.innerHTML = "";
-
-      const filtered = certificates.filter((c) => {
-        if (type && c.type !== type) return false;
-        if (status && c.status !== status) return false;
-
-        if (keyword) {
-          const combined = (c.name + " " + c.org).toLowerCase();
-          if (!combined.includes(keyword)) return false;
-        }
-        return true;
-      });
-
-      filtered.forEach((c, idx) => {
-        const tr = document.createElement("tr");
-        tr.dataset.id = c.id;
-
-        if (c.id === selectedId) {
-          tr.classList.add("selected");
-        }
-
-        tr.innerHTML = `
-          <td>${idx + 1}</td>
-          <td>${c.name}</td>
-          <td>${c.org}</td>
-          <td>${formatDateRange(c.validFrom, c.validTo)}</td>
-          <td>${getStatusTag(c.status)}</td>
-        `;
-
-        tr.addEventListener("click", () => {
-          selectedId = c.id;
-          renderTable();
-          renderDetail(c.id);
-        });
-
-        certTableBody.appendChild(tr);
-      });
-
-      // 선택된 항목이 필터링으로 사라졌으면 상세 초기화
-      if (selectedId && !filtered.some((c) => c.id === selectedId)) {
-        selectedId = null;
-        renderDetail(null);
-      }
-    }
-
-    function renderDetail(id) {
-      if (!id) {
-        detailContainer.innerHTML = `
-          <div class="detail-title">인증서를 선택하세요</div>
-          <div class="detail-note">
-            좌측 목록에서 인증서를 클릭하면, 발급기관, 인증범위, 유효기간, 관리 메모 등 상세정보가 표시된다.
-          </div>
-        `;
-        return;
-      }
-
-      const c = certificates.find((x) => x.id === id);
-      if (!c) {
-        detailContainer.innerHTML = "<div>선택한 인증서를 찾을 수 없다.</div>";
-        return;
-      }
-
-      detailContainer.innerHTML = `
-        <div class="detail-title">${c.name}</div>
-        <div class="detail-note">
-          <span class="pill">
-            <span class="pill-dot"></span> 구분: ${c.type}
-          </span>
-          <span class="pill ${c.status === "만료임박" ? "pill-warning" : c.status === "만료" ? "pill-danger" : ""}">
-            <span class="pill-dot"></span> 상태: ${c.status}
-          </span>
-        </div>
-
-        <div class="detail-row">
-          <div class="detail-label">발급기관</div>
-          <div class="detail-value">${c.org}</div>
-        </div>
-
-        <div class="detail-row">
-          <div class="detail-label">유효기간</div>
-          <div class="detail-value">${formatDateRange(c.validFrom, c.validTo)}</div>
-        </div>
-
-        <div class="detail-row">
-          <div class="detail-label">인증범위 / 비고</div>
-          <div class="detail-value">${c.scope || "-"}</div>
-        </div>
-
-        <div class="detail-actions">
-          <button>PDF 보기 (예정)</button>
-          <button class="primary">편집 (예정)</button>
-        </div>
-      `;
-    }
-
-    // 검색/필터 이벤트
-    [searchTextEl, filterTypeEl, filterStatusEl].forEach((el) => {
-      el.addEventListener("input", renderTable);
-      el.addEventListener("change", renderTable);
-    });
-
-    // 모달 관련
-    const modalBackdrop = $("#modalBackdrop");
-    const btnOpenModal = $("#btnOpenModal");
-    const btnCloseModal = $("#btnCloseModal");
-    const btnCancel = $("#btnCancel");
-    const btnSave = $("#btnSave");
-
-    function openModal() {
-      modalBackdrop.style.display = "flex";
-    }
-
-    function closeModal() {
-      modalBackdrop.style.display = "none";
-    }
-
-    btnOpenModal.addEventListener("click", openModal);
-    btnCloseModal.addEventListener("click", closeModal);
-    btnCancel.addEventListener("click", closeModal);
-
-    btnSave.addEventListener("click", () => {
-      const name = document.getElementById("newName").value.trim();
-      const org = document.getElementById("newOrg").value.trim();
-      const type = document.getElementById("newType").value;
-      const validFrom = document.getElementById("newValidFrom").value;
-      const validTo = document.getElementById("newValidTo").value;
-      const scope = document.getElementById("newScope").value.trim();
-
-      if (!name || !org) {
-        alert("인증서명과 발급기관은 필수이다.");
-        return;
-      }
-
-      const newId = (certificates[certificates.length - 1]?.id || 0) + 1;
-      certificates.push({
-        id: newId,
-        name,
-        org,
-        type,
-        validFrom,
-        validTo,
-        status: "유효", // 간단히 기본값
-        scope
-      });
-
-      // 입력값 초기화
-      document.getElementById("newName").value = "";
-      document.getElementById("newOrg").value = "";
-      document.getElementById("newValidFrom").value = "";
-      document.getElementById("newValidTo").value = "";
-      document.getElementById("newScope").value = "";
-
-      closeModal();
-      renderTable();
-      selectedId = newId;
-      renderDetail(newId);
-    });
-
-    // 초기 렌더링
-    renderTable();
-    renderDetail(null);
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
