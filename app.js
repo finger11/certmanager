@@ -1,47 +1,56 @@
-const LS_KEY = "CERT_SYS_V1";
+// app.js
+const LS_KEY = "CERT_SYS_V2_POPUP_ONLY";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-function uid(prefix="id"){
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
-}
+function uid(prefix="id"){ return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function daysBetween(aISO, bISO){
   if(!aISO || !bISO) return null;
   const a = new Date(aISO), b = new Date(bISO);
   return Math.floor((b - a) / (1000*60*60*24));
 }
+
 function saveState(s){ localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 function loadState(){
   const raw = localStorage.getItem(LS_KEY);
-  if(raw){
-    try{ return JSON.parse(raw); } catch {}
-  }
+  if(raw){ try{ return JSON.parse(raw); } catch {} }
   return {
-    models: [],        // {model_id, product_code, model_name, gas_type}
-    certs: [],         // {cert_id, cert_no, type, issuer, issued, valid_from, valid_to, memo, file:{name,dataUrl}? , created_at}
-    certModelMap: []   // {cert_id, model_id}  (N:1 / N:M 모두 커버)
+    models: [],
+    certs: [],
+    certModelMap: []
   };
 }
 let state = loadState();
 
-// ===== modal helpers
-function openModal(id){ $("#"+id).classList.add("is-open"); }
-function closeModal(id){ $("#"+id).classList.remove("is-open"); }
-function bindModalClose(){
-  $$("[data-close]").forEach(b=>{
-    b.addEventListener("click", ()=> closeModal(b.dataset.close));
+/* ======================
+   Modal control
+====================== */
+function openModal(id){
+  document.body.classList.add("modal-open");
+  const el = document.getElementById(id);
+  el.classList.add("is-open");
+  el.setAttribute("aria-hidden","false");
+}
+function closeModal(id){
+  const el = document.getElementById(id);
+  el.classList.remove("is-open");
+  el.setAttribute("aria-hidden","true");
+  const anyOpen = $$(".modalBack").some(x=>x.classList.contains("is-open"));
+  if(!anyOpen) document.body.classList.remove("modal-open");
+}
+function closeAllModals(){
+  $$(".modalBack").forEach(m=>{
+    m.classList.remove("is-open");
+    m.setAttribute("aria-hidden","true");
   });
-  // backdrop click close
-  $$(".modalBack").forEach(back=>{
-    back.addEventListener("click",(e)=>{
-      if(e.target === back) back.classList.remove("is-open");
-    });
-  });
+  document.body.classList.remove("modal-open");
 }
 
-// ===== Excel import (models)
+/* ======================
+   Excel import (models)
+====================== */
 function normalizeHeader(h){
   const s = String(h||"").trim().toLowerCase();
   if(["제품코드","product_code","productcode","코드"].includes(s)) return "product_code";
@@ -49,6 +58,7 @@ function normalizeHeader(h){
   if(["가스구분","gas_type","gastype","가스"].includes(s)) return "gas_type";
   return s;
 }
+
 async function importModelsFromExcel(file){
   if(!file) throw new Error("엑셀 파일이 없다.");
   const buf = await file.arrayBuffer();
@@ -58,9 +68,7 @@ async function importModelsFromExcel(file){
 
   const mapped = json.map(row=>{
     const out = {};
-    Object.keys(row).forEach(k=>{
-      out[normalizeHeader(k)] = row[k];
-    });
+    Object.keys(row).forEach(k=> out[normalizeHeader(k)] = row[k]);
     return out;
   });
 
@@ -85,12 +93,11 @@ async function importModelsFromExcel(file){
   return { total:mapped.length, inserted, updated, skipped };
 }
 
-// template
 function downloadModelTemplate(){
   const ws = XLSX.utils.aoa_to_sheet([
     ["제품코드","모델명","가스구분"],
     ["158060002","RC620-22KF","LNG"],
-    ["158070002","RC620-27KF","LNG"]
+    ["158070002","RC620-27KF","LNG"],
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "models");
@@ -103,13 +110,9 @@ function downloadModelTemplate(){
   setTimeout(()=>URL.revokeObjectURL(a.href), 500);
 }
 
-// ===== basic render helpers
-function badgeForStatus(st){
-  if(st==="VALID") return `<span class="badge b-valid">유효</span>`;
-  if(st==="DUE") return `<span class="badge b-due">임박</span>`;
-  if(st==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
-  return "";
-}
+/* ======================
+   Render helpers
+====================== */
 function calcStatus(cert){
   if(!cert.valid_to) return "VALID";
   const d = daysBetween(todayISO(), cert.valid_to);
@@ -117,12 +120,20 @@ function calcStatus(cert){
   if(d <= 60) return "DUE";
   return "VALID";
 }
+function badgeForStatus(st){
+  if(st==="VALID") return `<span class="badge b-valid">유효</span>`;
+  if(st==="DUE") return `<span class="badge b-due">임박</span>`;
+  if(st==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
+  return "";
+}
 function getModelsByCert(cert_id){
   const mids = state.certModelMap.filter(x=>x.cert_id===cert_id).map(x=>x.model_id);
   return mids.map(mid=>state.models.find(m=>m.model_id===mid)).filter(Boolean);
 }
 
-// ===== render Model Master table
+/* ======================
+   Model Master UI
+====================== */
 function renderModels(){
   const kw = ($("#modelFilter").value||"").trim().toLowerCase();
   const rows = state.models
@@ -148,6 +159,7 @@ function renderModels(){
       `).join("")}
     </tbody>
   `;
+
   el.querySelectorAll("[data-del-model]").forEach(b=>{
     b.addEventListener("click", ()=>{
       const id = b.dataset.delModel;
@@ -156,19 +168,19 @@ function renderModels(){
       state.certModelMap = state.certModelMap.filter(x=>x.model_id!==id);
       saveState(state);
       renderModels();
+      renderTargetPicker();
       renderCertList();
-      renderTargetPicker(); // 선택창도 갱신
     });
   });
 }
 
-// manual add
 function addModelManual(){
   const product_code = prompt("제품코드 입력");
   if(!product_code) return;
   const model_name = prompt("모델명 입력");
   if(!model_name) return;
-  const gas_type = prompt("가스구분(선택)");
+  const gas_type = prompt("가스구분(선택)") || "";
+
   if(state.models.some(m=>m.product_code===product_code.trim())){
     alert("이미 존재하는 제품코드이다.");
     return;
@@ -177,20 +189,19 @@ function addModelManual(){
     model_id: uid("m"),
     product_code: product_code.trim(),
     model_name: model_name.trim(),
-    gas_type: (gas_type||"").trim()
+    gas_type: gas_type.trim()
   });
   saveState(state);
   renderModels();
   renderTargetPicker();
 }
 
-// ===== Cert registration state (picked targets)
+/* ======================
+   Target picker (checkbox)
+====================== */
 let pickedModelIds = new Set();
-function updatePickedCount(){
-  $("#pickedCount").textContent = `선택 ${pickedModelIds.size}건`;
-}
+function updatePickedCount(){ $("#pickedCount").textContent = `선택 ${pickedModelIds.size}건`; }
 
-// ===== target picker render
 function renderTargetPicker(){
   const kw = ($("#tpKeyword").value||"").trim().toLowerCase();
   const rows = state.models
@@ -221,7 +232,6 @@ function renderTargetPicker(){
       }).join("")}
     </tbody>
   `;
-
   el.querySelectorAll("[data-pick-mid]").forEach(chk=>{
     chk.addEventListener("change", ()=>{
       const mid = chk.dataset.pickMid;
@@ -232,13 +242,14 @@ function renderTargetPicker(){
   });
 }
 
-// apply picked targets
 function applyPickedTargets(){
   updatePickedCount();
   closeModal("modalTargetPicker");
 }
 
-// ===== file to dataURL
+/* ======================
+   Cert registration
+====================== */
 function readFileAsDataUrl(file){
   return new Promise((resolve,reject)=>{
     if(!file) return resolve(null);
@@ -249,7 +260,6 @@ function readFileAsDataUrl(file){
   });
 }
 
-// ===== register cert
 async function saveCert(){
   if(pickedModelIds.size===0){
     alert("적용대상을 1개 이상 선택해야 한다.");
@@ -291,13 +301,10 @@ async function saveCert(){
     created_at: new Date().toISOString()
   });
 
-  pickedModelIds.forEach(mid=>{
-    state.certModelMap.push({ cert_id, model_id: mid });
-  });
-
+  pickedModelIds.forEach(mid=> state.certModelMap.push({ cert_id, model_id: mid }));
   saveState(state);
 
-  // reset registration form
+  // reset form
   $("#regCertNo").value="";
   $("#regType").value="";
   $("#regIssuer").value="";
@@ -305,9 +312,12 @@ async function saveCert(){
   $("#regValidFrom").value="";
   $("#regValidTo").value="";
   $("#regNoExpiry").checked=false;
+  $("#regValidFrom").disabled=false;
+  $("#regValidTo").disabled=false;
   $("#regFile").value="";
   $("#regFilePath").value="";
   $("#regMemo").value="";
+
   pickedModelIds = new Set();
   updatePickedCount();
 
@@ -315,7 +325,6 @@ async function saveCert(){
   renderCertList();
 }
 
-// ===== file download
 function downloadFile(cert_id){
   const cert = state.certs.find(c=>c.cert_id===cert_id);
   if(!cert?.file?.dataUrl){
@@ -328,7 +337,6 @@ function downloadFile(cert_id){
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-// ===== view targets popup
 function openTargetView(cert_id){
   const models = getModelsByCert(cert_id);
   const el = $("#targetViewTable");
@@ -349,7 +357,9 @@ function openTargetView(cert_id){
   openModal("modalTargetView");
 }
 
-// ===== search & list
+/* ======================
+   Cert list (search & table)
+====================== */
 function renderCertList(){
   const fModelName = ($("#fModelName").value||"").trim().toLowerCase();
   const fIssuer = ($("#fIssuer").value||"").trim().toLowerCase();
@@ -362,8 +372,7 @@ function renderCertList(){
     .map(c=>{
       const models = getModelsByCert(c.cert_id);
       const gasSet = Array.from(new Set(models.map(m=>m.gas_type||"").filter(Boolean)));
-      const status = calcStatus(c);
-      return { ...c, _models: models, _gasSet: gasSet, _status: status };
+      return { ...c, _models: models, _gasSet: gasSet, _status: calcStatus(c) };
     })
     .filter(r=>{
       if(fIssuer && !(r.issuer||"").toLowerCase().includes(fIssuer)) return false;
@@ -378,7 +387,6 @@ function renderCertList(){
         if(!g.includes(fGas)) return false;
       }
 
-      // 기간 필터: 유효기간(To)이 존재할 때만 비교
       if((fFrom || fTo) && r.valid_from && r.valid_to){
         if(fFrom && r.valid_to < fFrom) return false;
         if(fTo && r.valid_from > fTo) return false;
@@ -411,9 +419,7 @@ function renderCertList(){
           <td>${r.valid_from || "-"}</td>
           <td>${r.valid_to || "-"}</td>
           <td>${badgeForStatus(r._status)}</td>
-          <td>
-            ${r.file ? `<button class="btn" data-dl="${r.cert_id}">⬇</button>` : "-"}
-          </td>
+          <td>${r.file ? `<button class="btn" data-dl="${r.cert_id}">⬇</button>` : "-"}</td>
         </tr>
       `).join("")}
     </tbody>
@@ -427,15 +433,9 @@ function renderCertList(){
   });
 }
 
-// ===== status badge
-function badgeForStatus(st){
-  if(st==="VALID") return `<span class="badge b-valid">유효</span>`;
-  if(st==="DUE") return `<span class="badge b-due">임박</span>`;
-  if(st==="EXPIRED") return `<span class="badge b-expired">만료</span>`;
-  return "";
-}
-
-// ===== export/reset
+/* ======================
+   Export / Reset
+====================== */
 function exportJson(){
   const blob = new Blob([JSON.stringify(state,null,2)], { type:"application/json" });
   const a = document.createElement("a");
@@ -454,13 +454,14 @@ function resetAll(){
   renderModels();
   renderTargetPicker();
   renderCertList();
+  closeAllModals();
 }
 
-// ===== bindings
+/* ======================
+   Bind events
+====================== */
 function bindEvents(){
-  bindModalClose();
-
-  // open modals
+  // open popups
   $("#btnOpenModelMaster").addEventListener("click", ()=>{
     openModal("modalModelMaster");
     renderModels();
@@ -475,7 +476,22 @@ function bindEvents(){
     updatePickedCount();
   });
 
-  // 모델 업로드/템플릿/수기
+  // close buttons + backdrop click
+  $$("[data-close]").forEach(b=>{
+    b.addEventListener("click", ()=> closeModal(b.dataset.close));
+  });
+  $$(".modalBack").forEach(back=>{
+    back.addEventListener("click",(e)=>{
+      if(e.target === back) closeModal(back.id);
+    });
+  });
+
+  // ESC close
+  document.addEventListener("keydown",(e)=>{
+    if(e.key === "Escape") closeAllModals();
+  });
+
+  // model master
   $("#btnImportModels").addEventListener("click", async ()=>{
     try{
       const file = $("#modelFile").files?.[0];
@@ -484,15 +500,16 @@ function bindEvents(){
         `총 ${res.total}행 처리: 신규 ${res.inserted}, 업데이트 ${res.updated}, 스킵 ${res.skipped}`;
       renderModels();
       renderTargetPicker();
-    }catch(e){
-      alert(e.message || "업로드 실패");
+      renderCertList();
+    }catch(err){
+      alert(err.message || "업로드 실패");
     }
   });
   $("#btnDownloadModelTemplate").addEventListener("click", downloadModelTemplate);
   $("#modelFilter").addEventListener("input", renderModels);
   $("#btnAddModelManual").addEventListener("click", addModelManual);
 
-  // 등록: 파일명 표시
+  // reg master
   $("#regFile").addEventListener("change", ()=>{
     const f = $("#regFile").files?.[0];
     $("#regFilePath").value = f ? f.name : "";
@@ -501,9 +518,13 @@ function bindEvents(){
     const on = $("#regNoExpiry").checked;
     $("#regValidFrom").disabled = on;
     $("#regValidTo").disabled = on;
+    if(on){
+      $("#regValidFrom").value="";
+      $("#regValidTo").value="";
+    }
   });
 
-  // 적용대상 지정 팝업
+  // target picker
   $("#btnOpenTargetPicker").addEventListener("click", ()=>{
     openModal("modalTargetPicker");
     renderTargetPicker();
@@ -523,10 +544,10 @@ function bindEvents(){
   });
   $("#btnTpApply").addEventListener("click", applyPickedTargets);
 
-  // 저장
+  // save cert
   $("#btnSaveCert").addEventListener("click", saveCert);
 
-  // 검색
+  // search
   $("#btnSearch").addEventListener("click", renderCertList);
 
   // export/reset
@@ -534,22 +555,37 @@ function bindEvents(){
   $("#btnReset").addEventListener("click", resetAll);
 }
 
-// ===== init
-function init(){
-  // seed: 예시 모델 몇 개(원하면 삭제 가능)
+/* ======================
+   Init
+====================== */
+function seedIfEmpty(){
+  if(state.models.length===0){
+    state.models.push(
+      { model_id: uid("m"), product_code:"158060002", model_name:"RC620-22KF", gas_type:"LNG" },
+      { } // placeholder? no. remove.
+    );
+  }
+  // fix: seed data minimal
+  if(state.models.length===1 && !state.models[0].product_code){
+    state.models = [];
+  }
   if(state.models.length===0){
     state.models.push(
       { model_id: uid("m"), product_code:"158060002", model_name:"RC620-22KF", gas_type:"LNG" },
       { model_id: uid("m"), product_code:"158070002", model_name:"RC620-27KF", gas_type:"LNG" },
       { model_id: uid("m"), product_code:"158080002", model_name:"RC620-30KF", gas_type:"LNG" }
     );
-    saveState(state);
   }
+  saveState(state);
+}
 
+function init(){
+  seedIfEmpty();
   bindEvents();
   renderModels();
   renderTargetPicker();
   renderCertList();
   updatePickedCount();
+  closeAllModals(); // 시작 시 무조건 메인만 보이게
 }
 init();
