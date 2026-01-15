@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="ko">
 <head>
@@ -8,10 +9,14 @@
   <!-- Excel 업로드: SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
+
 <body>
+  <!-- ===== 메인: 인증서조회 Master만 표시 ===== -->
   <header class="topbar">
-    <div class="topbar__title">인증서관리시스템 (인증서조회 Master)</div>
+    <div class="topbar__title">인증서 조회 Master</div>
     <div class="topbar__actions">
+      <button class="btn" id="btnOpenModelMaster">모델 편성하기</button>
+      <button class="btn btn--primary" id="btnOpenRegMaster">인증서 등록하기</button>
       <button class="btn" id="btnExport">Export(JSON)</button>
       <button class="btn btn--danger" id="btnReset">초기화</button>
     </div>
@@ -19,15 +24,6 @@
 
   <main class="wrap">
     <section class="card">
-      <div class="card__head">
-        <div class="card__title">인증서 조회 Master</div>
-        <div class="card__actions">
-          <button class="btn" id="btnOpenModelMaster">모델 편성하기</button>
-          <button class="btn btn--primary" id="btnOpenRegMaster">인증서 등록하기</button>
-        </div>
-      </div>
-
-      <!-- 검색 영역 -->
       <div class="card__body">
         <div class="filters">
           <div class="field">
@@ -58,7 +54,6 @@
           </div>
         </div>
 
-        <!-- 목록 -->
         <div class="tableWrap">
           <table class="table" id="certTable"></table>
         </div>
@@ -66,16 +61,21 @@
     </section>
   </main>
 
-  <!-- ======= 모달: 모델 Master ======= -->
-  <div class="modalBack" id="modalModelMaster">
+  <!-- =========================
+       팝업들(기본 숨김)
+  ========================== -->
+
+  <!-- ======= 팝업: 모델 Master ======= -->
+  <div class="modalBack" id="modalModelMaster" aria-hidden="true">
     <div class="modal">
       <div class="modal__head">
         <div class="modal__title">모델 Master</div>
-        <button class="iconBtn" data-close="modalModelMaster">✕</button>
+        <button class="iconBtn" data-close="modalModelMaster" aria-label="닫기">✕</button>
       </div>
       <div class="modal__body">
         <div class="hint">
-          엑셀 컬럼: <b>제품코드</b>, <b>모델명</b>, <b>가스구분</b> (또는 product_code/model_name/gas_type)
+          엑셀 컬럼: <b>제품코드</b>, <b>모델명</b>, <b>가스구분</b>
+          (또는 product_code/model_name/gas_type)
         </div>
 
         <div class="row">
@@ -96,19 +96,18 @@
           <table class="table" id="modelTable"></table>
         </div>
       </div>
-
       <div class="modal__foot">
         <button class="btn" data-close="modalModelMaster">닫기</button>
       </div>
     </div>
   </div>
 
-  <!-- ======= 모달: 등록 Master ======= -->
-  <div class="modalBack" id="modalRegMaster">
+  <!-- ======= 팝업: 등록 Master ======= -->
+  <div class="modalBack" id="modalRegMaster" aria-hidden="true">
     <div class="modal modal--wide">
       <div class="modal__head">
         <div class="modal__title">등록 Master</div>
-        <button class="iconBtn" data-close="modalRegMaster">✕</button>
+        <button class="iconBtn" data-close="modalRegMaster" aria-label="닫기">✕</button>
       </div>
 
       <div class="modal__body">
@@ -156,7 +155,7 @@
 
         <label class="label">파일업로드(PDF 등)</label>
         <div class="row">
-          <input class="input" id="regFilePath" placeholder="C:/document/..." readonly />
+          <input class="input" id="regFilePath" placeholder="선택된 파일명" readonly />
           <input type="file" id="regFile" />
         </div>
 
@@ -172,11 +171,11 @@
   </div>
 
   <!-- ======= 팝업: 적용대상 지정하기 ======= -->
-  <div class="modalBack" id="modalTargetPicker">
+  <div class="modalBack" id="modalTargetPicker" aria-hidden="true">
     <div class="modal modal--wide">
       <div class="modal__head">
         <div class="modal__title">적용대상 지정하기</div>
-        <button class="iconBtn" data-close="modalTargetPicker">✕</button>
+        <button class="iconBtn" data-close="modalTargetPicker" aria-label="닫기">✕</button>
       </div>
       <div class="modal__body">
         <div class="row">
@@ -203,11 +202,11 @@
   </div>
 
   <!-- ======= 팝업: 적용대상 확인하기 ======= -->
-  <div class="modalBack" id="modalTargetView">
+  <div class="modalBack" id="modalTargetView" aria-hidden="true">
     <div class="modal modal--wide">
       <div class="modal__head">
         <div class="modal__title">적용대상 조회</div>
-        <button class="iconBtn" data-close="modalTargetView">✕</button>
+        <button class="iconBtn" data-close="modalTargetView" aria-label="닫기">✕</button>
       </div>
       <div class="modal__body">
         <div class="tableWrap">
